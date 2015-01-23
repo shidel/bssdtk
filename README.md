@@ -14,3 +14,5 @@ parsing are so slow, I don't know if I will ever finish those sections.
 
 Initial build testing was done on Mac OS Lion and openSuSE 12.1. However, current testing
 is only being done on Mac OS X Yosemite, openSuSE, and CentOS.
+
+![Snapshot 1](media/SS001.png "bssdtk snapshot")![Snapshot 2](media/SS002.png "bssdtk snapshot")
