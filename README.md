@@ -1,2 +1,2 @@
 # bssdtk
-Bash Script Software Development Toolkit
+Bash Shell Software Development Toolkit
