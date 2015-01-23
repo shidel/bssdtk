@@ -9,8 +9,7 @@
 	+ added registerOnExitEvent
 	+ added pushStack & popStack
 	+ added toolkit true directory detection & Global Variable Demo
-	+ added defaultIgnoreEvent, assigned OnErrorEvent to it because functions that return 
-		non-zero generate an error.
+	+ added defaultIgnoreEvent, assigned OnErrorEvent to it because functions that return non-zero generate an error.
 	+ added require, requireOnce, include, includeOnce functions for including scripts sources
 	+ added registerExternals
 	+ added registerInternals to override external programs
