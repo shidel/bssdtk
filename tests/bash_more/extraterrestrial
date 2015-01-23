@@ -1,0 +1,4 @@
+#/!bin/sh
+# Part 2, of declared exported variable testing
+
+echo "${TEST_EX_VAR}"

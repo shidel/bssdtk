@@ -1,0 +1,81 @@
+#!/bin/sh
+
+# Color terminal ANSI compatible utilities.
+
+# printf "\033[1;32mBold \e[0mNormal\n"
+
+# Use Ansi color codes
+[[ ${USE_COLORS} ]] || USE_COLORS=${STANDARD_OUTPUT}
+
+requireOnce strings
+
+# Foreground ANSI color table
+[[ ${COLOR_TABLE} ]] || COLOR_TABLE="reset=0,default=39,bold=1,dim=2,underline=4,blink=5,\
+reverse=7,hidden=8,black=30,red=31,green=32,yellow=33,blue=34,magenta=35,cyan=36,\
+light_gray=37,dark_gray=90,gray=90,light_red=91,light_green=92,light_yellow=93,\
+light_blue=94,light_magenta=95,light_cyan=96,white=97,reset_all=0,reset_bold=21,\
+reset_dim=22,reset_underline=24,reset_blink=25,reset_reverse=27,reset_hidden=28"
+
+# Background ANSI color table
+[[ ${COLOR_TABLE_BACKGROUND} ]] || COLOR_TABLE_BACKGROUND="reset=0,default=49,black=40,\
+red=41,green=42,yellow=43,blue=44,magenta=45,cyan=46,light_gray=47,dark_gray=100,\
+gray=100,light_red=101,light_green=102,light_yellow=103,light_blue=104,light_magenta=105,\
+light_cyan=106,white=107"
+
+# Set the foreground text color using ANSI escape sequences.
+# 
+# @param string Multiple ANSI color names as defined in the COLOR_TABLE global variable.
+# @return text to standard output.
+#
+# example: setColor Reset White
+# 
+# note: Set the global variable USE_COLORS to any value other than true to disable all
+# color sequence outputs. 
+function setColor
+{
+	[[ ${USE_COLORS} != "true" ]] && return 
+
+	local color
+	local c
+	
+	while [[ $# -ne 0 ]] ; do
+		c=$(caseLower "${1}")
+		c="${COLOR_TABLE##*${c}=}"
+		if [[ ${#c} = ${#COLOR_TABLE} ]] ; then
+			c="${COLOR_TABLE##*default=}"
+		fi;
+		c="${c%%,*}"
+		[[ ${color} ]] && color="${color};${c}" || color="${c}"
+		shift
+	done;
+	color="\e[${color}m"
+	[[ $DUMB_ECHO ]] && printf "$color" || echo -ne "$color"
+}
+
+# Set the background text color using ANSI escape sequences.
+# 
+# @param string Multiple ANSI color names as defined in the COLOR_TABLE_BACKGROUND global variable.
+# @return text to standard output.
+#
+# note: Set the global variable USE_COLORS to any value other than true to disable all
+# color sequence outputs. 
+function setBackground
+{
+	[[ ${USE_COLORS} != "true" ]] && return 
+
+	local color
+	local c
+	
+	while [[ $# -ne 0 ]] ; do
+		c=$(caseLower "${1}")
+		c="${COLOR_TABLE_BACKGROUND##*${c}=}"
+		if [[ ${#c} = ${#COLOR_TABLE_BACKGROUND} ]] ; then
+			c="${COLOR_TABLE_BACKGROUND##*default=}"
+		fi;
+		c="${c%%,*}"
+		[[ ${color} ]] && color="${color};${c}" || color="${c}"
+		shift
+	done;
+	color="\e[${color}m"
+	[[ $DUMB_ECHO ]] && printf "$color" || echo -ne "$color"
+}

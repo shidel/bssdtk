@@ -1,0 +1,147 @@
+#!/bin/sh
+
+# Set TIMEOUT value, default 0
+TIMEOUT="${1:-0}"
+shift
+
+PASSED=true
+
+# Basic function Testing
+idiot_func() {
+	[[ ${PASSED} != true ]] && {
+		echo Bash failed to see a global variable inside a function.
+		echo Testing aborted.
+		exit 1
+	} 
+
+	IS_STUPID=yes
+	local GENIUS=true
+	return 1
+}
+idiot_func2() {
+	IS_STUPID=$@
+}
+
+# IS_STUPID should not be set, since it was inside a function
+[[ ${IS_STUPID} != "" ]] && {
+	echo Bash failed to recognize a function
+	echo Testing aborted.
+	exit 1
+} 
+
+# call the function, should return error
+idiot_func && {
+	echo Bash failed to return expected error from a function
+	echo Testing aborted.
+	exit 1
+} 
+
+# Is Stupid, should now be set
+[[ ${IS_STUPID} = "" ]] && {
+	echo Bash failed to remember global variable set inside a function
+	echo Testing aborted.
+	exit 1
+} 
+
+# Make sure we cannot see GENIUS local variable 
+[[ "${GENIUS}" = "" ]] || {
+	echo Bash failed to registar a variable correctly using local.
+	echo Testing aborted.
+	exit 1
+} 
+
+# test parameter passing
+idiot_func2 Hello
+[[ ${IS_STUPID} != "Hello" ]] && {
+	echo Bash failed to properly pass and remember a parameter to a function
+	echo Testing aborted.
+	exit 1
+} 
+
+# Test unset works
+unset IS_STUPID
+[[ -z "${IS_STUPID}" ]] && [[ -z "${IS_STUPID+x}" ]] || {
+	if [[ -z "${IS_STUPID}" ]] ; then
+		echo Bash cleared a variable with unset. It should have undefined it!
+	else
+		echo Bash unset command completely failed!
+	fi;
+	echo Testing aborted.
+	exit 1
+}
+
+# initial default value bash test, should never fail
+ask=""
+ask="${ask:-n}"
+[[ "${ask}" != "n" ]] && {
+	echo Bash failed to assign a default value to variable!
+	echo Testing aborted.
+	exit 1
+}
+
+# Test that bash is comparing to multiple values, should never fail
+[[ "${ask}" = [Nn] ]] || {
+	echo Bash failed to check against multiple values of variable!
+	echo Testing aborted.
+	exit 1
+}
+
+# Truly critical function stuff worked so continue more bash testing using test functions
+
+# What to do when test fails.
+shfail() {
+	# any test failure will permanently set passed to false
+	PASSED=false
+	# if timeout is 0, assume continue.
+	[[ ${TIMEOUT} = 0 ]] && return 0
+	# if script fails prompt to continue
+	unset ask
+	read -t ${TIMEOUT} -p "Failed, Continue (Y/n)?" ask 
+	[[ ${ask} = "" ]] && echo ""
+	ask="${ask:-Y}"
+	
+	[[ ! ${ask} = [yY] ]] && {
+		echo User specified termination.
+		exit 1
+	}
+	return 0	
+}
+# basically a double check
+shcheck() {
+  (( CHECK++ )) 
+  [[ $CHECK != $COUNT ]] && shfail
+  COUNT=$CHECK
+}
+
+# Test a thingy
+shtest() {
+	local ACTUAL="$1"
+	shift
+	local REQUIRED="$1"
+	shift
+	local MESSAGE="${@}"
+	[[ "${ACTUAL}" = "${REQUIRED}" ]] && { (( COUNT++ )); return 0; }
+	echo Bash failed to "${MESSAGE}"
+	echo "It returned \`${ACTUAL}' when \`${REQUIRED}' was expected"
+	return 0
+}
+
+# Set count of tested and count of checked.
+COUNT=0
+CHECK=0
+
+A="abcdeABCDEc12345cX"
+shtest "${A%c*}" 	"abcdeABCDEc12345" 	"delete shortest match of substring from back"
+shcheck
+
+. "${0%/*}/bash_more/string_theory"		# String Testing
+
+. "${0%/*}/bash_more/i_declare"			# Declare Testing
+
+. "${0%/*}/bash_more/array_of_sunshine"	# Array Testing
+
+. "${0%/*}/bash_more/chaos"				# Random Number Testing
+
+. "${0%/*}/bash_more/entrapment"		# Signal Trapping Testing
+
+[[ ${PASSED} = true ]] && exit 0 || exit 1

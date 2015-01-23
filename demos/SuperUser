@@ -1,0 +1,12 @@
+#!/bin/sh
+
+# Simple script how to use requestSuperUser
+
+. /opt/bssdtk/core
+
+# Super User privileges are not actually required.
+requestSuperUser ask && echo SU passed. || echo SU failed.
+
+echo ${OS_PLATFORM}
+echo ${OS_TITLE}
+echo ${OS_VERSION}

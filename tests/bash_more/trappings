@@ -1,0 +1,35 @@
+#!/bin/sh
+
+# trap testing part 2
+
+normal_exit_trap(){ 
+	trap exit INT TERM EXIT
+}
+
+test_exit_trap() {
+	echo "Goodbye"
+	trap exit INT TERM EXIT
+}
+
+test_int_trap () {
+	echo "Trap of INT signal"
+}
+
+test_abrt_trap () {
+	echo "Trap of ABRT signal"
+	exit 0
+}
+
+trap normal_exit_trap EXIT
+trap test_abrt_trap ABRT
+
+case $1 in
+	(0)	trap test_exit_trap EXIT
+	;;
+	(*) 
+		trap test_int_trap INT TERM
+		while true; do
+			sleep 0.1
+		done;
+esac;
+

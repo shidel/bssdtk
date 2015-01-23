@@ -1,0 +1,48 @@
+#!/bin/sh
+
+# String testing Sub-script
+
+# Test String T
+A="abcdeABCDEc12345cX"
+B=""
+
+shtest "${#A}" 	"18" 			"return correct string length"  
+shcheck
+shtest "${A:-n}" 	"$A" 			"see test string and not assign default"  
+shcheck
+shtest "${B:-$A}" 	"$A" 			"see blank string and assign default"
+shcheck
+shtest "${A:(-5)}" 	"345cX" 		"return last 5 chars"
+shcheck
+shtest "${A:9}" 	"Ec12345cX" 	"return all characters from starting position in string"
+shcheck
+shtest "${A:5:5}" 	"ABCDE" 		"return from position, specified number of characters"
+shcheck
+shtest "${A#*c}" 	"deABCDEc12345cX" "delete shortest match of substring from front"
+shcheck
+shtest "${A##*c}" 	"X" 			"delete longest match of substring from front"
+shcheck
+shtest "${A%c*}" 	"abcdeABCDEc12345" 	"delete shortest match of substring from back"
+shcheck
+shtest "${A%%c*}" 	"ab" 			"delete longest match of substring from back"
+shcheck
+shtest "${A/ABC/xyz}" 	"abcdexyzDEc12345cX" 	"replace first match of substring in string"
+shcheck
+shtest "${A/c/C}" 	"abCdeABCDEc12345cX" 		"replace first match of substring in string"
+shcheck
+shtest "${A//c/C}" 	"abCdeABCDEC12345CX" 		"replace all matches of substring in string"
+shcheck
+
+# Avoiding Mac Incompatible String Test Functions
+# shtest ${A,,} 	"abcdeabcde12345" "convert string to lower case" 
+# shcheck
+# shtest ${A^^} 	"ABCDEABCDE12345" "convert string to lower case"
+# shcheck
+# shtest ${A/#c/C} 	"abcdeABCDEc12345CX" 		"replace first match of substring in string from front"
+# shcheck
+# shtest ${A/%c/C} 	"abcdeABCDEc12345CX" 		"replace first match of substring in string from back"
+# shcheck
+
+unset A
+unset B
+

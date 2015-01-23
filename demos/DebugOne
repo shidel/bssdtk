@@ -1,0 +1,34 @@
+#!/bin/sh
+
+# Demo of using debug library variable snapshots
+
+# Include Bash Shell Script Development Toolkit Core Library
+. /opt/bssdtk/core
+
+# debug automatically takes a snapshot when first included
+
+requireOnce debug && echo Included debug library.
+echo
+
+echo Setting variables ALPHA, beta and gamma.
+ALPHA=10
+beta=2
+gamma=
+
+echo Perform comparison to original debug snapshot.
+debugCompare
+echo
+
+echo Take a new debug snapshot.
+debugSnapshot
+
+echo Include the colors library.
+requireOnce colors
+
+echo Change the values of ALPHA \& beta. But unset gamma.
+ALPHA=5
+beta=9
+unset gamma
+
+echo Show latest changes comparied to latest snapshot.
+debugCompare

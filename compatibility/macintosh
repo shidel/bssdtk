@@ -1,0 +1,26 @@
+#!/bin/sh
+
+# Macintosh OS X Bash Compatibility Library
+
+# Built in echo supports no advanced features, including -n (no carrage return)
+# So, force the use of external echo and ignore built in version. (external only supports
+# the -n switch)
+registerOverrides echo
+
+# Used internally when only an extremely simple echo command is available.
+# Mac is mostly useless for advanced echo options. May just override it internally using
+# external printf program.
+DUMB_ECHO=true
+
+INTERNAL__echo () {
+	[[ "${1}" = "-n" ]] && "$EXTERNAL__echo" "${@}" || builtin echo "${@}"
+}
+
+# Override abstract core function and populate OS_TITLE & OS_VERSION global variables, 
+# linux version.
+function setDistribution
+{
+	registerExternals cut sw_vers grep
+	OS_TITLE=$( echo $(sw_vers | grep "ProductName" | cut -d ":" -f 2- ));
+	OS_VERSION=$( echo $(sw_vers | grep "ProductVersion" | cut -d ":" -f 2- ));
+}

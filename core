@@ -1,0 +1,775 @@
+#!/bin/sh
+
+# BSSDTK core library. 
+# (required)
+#
+# This work is subject to the terms of the Mozilla Public License, v. 2.0. 
+# If a copy of the MPL was not distributed with this file, You can obtain one at 
+# http://mozilla.org/MPL/2.0/.
+
+# This library requires the Bash Shell.
+[ "${#BASH}" -gt 0 ] && [ "${#SHELL}" -gt 0 ] && [ "${SHELL/bash/}" != "${SHELL}" ] && { 
+	BOURNE_AGAIN_SHELL_TEST=ok 
+}
+
+[ ! $BOURNE_AGAIN_SHELL_TEST ] && {
+	echo This program requires the bash shell. 
+	echo Other shells are not supported at this time.
+	exit 1
+}
+unset BOURNE_AGAIN_SHELL_TEST
+ 
+# Special note:
+# All functions that start with the function command are considered user functions.
+# These are listed automatically by the bssdtk -l & -h command line options.
+# Only files located in the main bssdtk directory that do not have a file extention are
+# scanned for function and help information. 
+# Any comments that immediately precede the function are considered the functions,
+# help section and are shown with the -h options. Any other line including a blank line
+# will cause previous comments to be ignored. 
+
+LAST_MARKED_TIME=$(date +"%s%6N")
+LAST_MARKED_TIME=${LAST_MARKED_TIME/6N/000000}
+BSSDTK_START_MARK=$LAST_MARKED_TIME
+
+# read users custom configuration file if present
+[[ -f "${HOME}/.bssdtk" ]] && . "${HOME}/.bssdtk"
+
+# global variables
+
+# List of scripts that have been included or required. 
+# each included scripts actual path is stored in a variable
+# INCLUDED__PATHS_OF_${script_file_name}
+declare -a INCLUDED__FILES	
+
+# List of missing external programs
+declare -a EXTERNALS__MISSING
+
+# List of found usable external programs
+# also, the path/filename of each found external is stored in a variable
+# called EXTERNAL__${program_name}
+declare -a EXTERNALS__FOUND
+
+declare -r LOWERCASE_CHARS="abcdefghijklmnopqrstuvwxyz"
+declare -r UPPERCASE_CHARS="ABCDEFGHIJKLMNOPQRSTUVWXYZ"
+declare -r NUMBER_CHARS="0123456789"
+declare -r SYMBOL_CHARS='`~!@#$%^&*()-_=+[]{}|;:<>,./?\"'"'"
+
+[[ -t 0 ]] && declare -r STANDARD_INPUT=true
+[[ -t 1 ]] && declare -r STANDARD_OUTPUT=true
+[[ -t 2 ]] && declare -r STANDARD_ERROR=true
+
+AUTO_CLEANUP=true
+
+NO_BREAK_WIDTH=0
+NO_BREAK_ALT=0
+
+# Like echo, but without breaking words if possible.
+# 
+# @param switch -n No CR/LF after outputting text.
+# @param switch -i Insure text is indented to a specified column.
+# @param switch -a Use alternate width tracking variable. Useful only when piping to 
+# both standard output and error devices simultaneously.
+# @param string One or more strings to output.
+# @return text to standard output device.
+#
+# example: echoNoBreak -i 10 "Hello there" "My friend"
+#
+# note: This function does not work across shell levels (or sub-shells) and is not 
+# compatible with the normal echo command. Generally, a function should start it's output
+# on a fresh line and end on one a well. Also, tab character is currently not supported
+# and tabs are collapsed into a single whitespace.
+function echoNoBreak
+{
+	local p=0
+	local indent=0
+	local alt_width=
+	while [[ $p -ne ${#@} ]] ; do
+		local p=${#@}
+		[[ "${1}" = '-n' ]] && {
+			local NONEWLINE=true
+			shift
+		}
+		[[ "${1}" = '-a' ]] && {
+			local alt_width=true
+			local hold_width=$NO_BREAK_WIDTH
+			NO_BREAK_WIDTH=$NO_BREAK_ALT
+			shift
+		}
+		[[ "${1}" = '-i' ]] && {
+			shift
+			local indent="${1}"
+			
+			shift
+		}
+	done
+	local tabby=''
+	while [[ "${#tabby}" -lt $indent ]] ; do
+		tabby="${tabby} "
+	done
+	line=""
+	while [[ ${#@} -ne 0 ]] ; do
+		local line="${1}"
+		[[ ${#@} -ne 0 ]] && line="${line} "
+		shift;
+	done
+	# collapse tabs to single whitespace
+	local block="${line//		/	}"
+	while [[ ${#block} -ne ${#line} ]] ; do
+		line="$block"
+		local block="${line//		/	}"
+	done;
+	local line="${line//	/ }"
+	
+	local pos
+	while [[ ${#line} -ne 0 ]] ; do
+		if [[ $NO_BREAK_WIDTH -lt $indent ]] ; then
+				echo -n "${tabby:0:$(( $indent - $NO_BREAK_WIDTH ))}"
+				NO_BREAK_WIDTH=$indent
+		fi;
+		if [[ $(( ${#line} + $NO_BREAK_WIDTH )) -gt $COLUMNS ]] ; then
+			local block="${line:0:$(( $COLUMNS - $NO_BREAK_WIDTH ))}"
+			local temp="${block%' '*}"
+			if [[ "$block" != "$temp" ]] ; then
+				echo "$temp"
+				line="${line:$(( ${#temp} + 1 ))}"
+				NO_BREAK_WIDTH=0
+				pos=0; while [[ "${line:$pos:1}" = [" 	"] ]] ; do (( pos++ )); done; 
+				[[ $pos -ne 0 ]] && line="${line:$pos}"
+			else # no safe break point left in current line
+				local temp="${line#*' '}"
+				local temp="${line:0:$(( ${#line} - ${#temp} )) }"
+				if [[ $(( $indent + ${#temp} + 1 )) -gt $NO_BREAK_WIDTH ]] ; then
+					echo "$block"
+					line="${line:$(( ${#block} ))}"
+					pos=0; while [[ "${line:$pos:1}" = [" 	"] ]] ; do (( pos++ )); done; 
+					[[ $pos -ne 0 ]] && line="${line:$pos}"
+				else
+					echo
+				fi;
+				NO_BREAK_WIDTH=0				
+			fi
+		else
+			echo -n "$line"
+			NO_BREAK_WIDTH=$(( $NO_BREAK_WIDTH + ${#line} ))
+			line=''
+		fi;
+	done
+	[[ ! ${NONEWLINE} ]] && {
+		NO_BREAK_WIDTH=0
+		echo
+	}
+	[[ ${alt_width} ]] && {
+		NO_BREAK_ALT=$NO_BREAK_WIDTH
+		NO_BREAK_WIDTH=$hold_width
+	}	
+}
+
+echoErrorDevice () {
+	if [[ ${STANDARD_ERROR} ]] && [[ ${STANDARD_OUTPUT} ]] ; then
+		echoNoBreak "${@}" >&2
+	else
+		echoNoBreak "${@}" >&1
+		echoNoBreak -a "${@}" >&2
+	fi;
+}
+
+setColorError () {
+	[[ ${USE_COLORS} ]] || return
+	if [[ ${STANDARD_ERROR} ]] && [[ ${STANDARD_OUTPUT} ]] ; then
+		setColor "${@}" >&2
+	else
+		setColor "${@}" >&1
+		setColor "${@}" >&2
+	fi;
+}
+
+# Display an error message to standard error and/or standard output device and either 
+# return to the previous function or terminate the script.
+# 
+# @param integer (required) 0 means return to functon, non-zero terminates with error code.
+# @param strings Messages to be displayed as error message. First line is automatically
+# prefixed with "ERROR: ". Also, if the colors library is loaded the first line will be Red
+# and remaining lines Dark_Gray.
+#
+# example: echoError 1 "Missing config file." "Script terminated!"
+#
+# example: echoError 0 "Missing config file." "Assuming defaults."
+#
+# note: Also, if the colors library is being used and USE_COLORS=true, the foreground & 
+# background colors are reset to default. Also, if the sound library is being used an
+# audible alert is played. Also, if the procs library is included as well the user will
+# be able to skip the audible message by pressing a key. 
+function echoError
+{
+	local code=$1
+	shift
+	local flag=
+	local speak
+	setColorError Reset Red
+	[[ ${#@} = 0 ]] && {
+		echoErrorDevice -i 0 "ERROR: No Additional information available."
+		speak="An unknown error has occurred."
+	}
+	while [[ ${#@} -ne 0 ]] ; do
+		if [[ ! ${flag} ]] ; then
+			echoErrorDevice -i 0 -n "ERROR: "
+			echoErrorDevice -i 8 "${1}"
+			speak="An error has occurred. ${1}"
+			
+			# [[ ${#@} -gt 1 ]] && echo
+		else
+			echoErrorDevice -i 8 "${1}"
+			# [[ ${#@} -eq 1 ]] && echo
+		fi;
+		shift
+		[[ ! ${flag} ]] && setColorError Dark_Gray
+		flag=true
+	done
+	setColorError Default
+	[[ ${SPEAK_ERRORS} = true ]] && [[ $speak ]] && {
+		if [[ $(type -t waitProc) = "function" ]] && [[ "$INCLUDED__PATHS_OF_procs" != "" ]] ; then
+			flag=$( say -b "$speak" )
+			waitProc -d -t 30 -p $flag -n
+		else
+			say "$speak"
+		fi;
+	}
+	[[ ${code} = 0 ]] && return 0 || exit ${code}
+}
+
+# Simple function to add strings to a global stack array.
+# @param string $1 is name of the stack array (not a variable)
+# @param string $2, $3... are the strings to add to the stack 
+# @return undefined
+#
+# example: stackPush MYSTACK "this" "that" "other stuff"
+function stackPush 
+{
+	local name=${1}
+	shift
+	while [[ $# -ne 0 ]] ; do
+		eval "$name"'[${#'$name'[@]}]'=\"\${1}\"
+		shift
+	done;
+}
+
+# Simple function to remove items from a global stack array.
+# @param string $1 is name of the stack array (not a variable)
+# @param string $2, $3... are the names of variables to put the data from the stack into
+# @return exitcode non-zero if error occured
+#
+# example: stackPop MYSTACK ITEM1 ITEM2 ITEM3 ITEM4 || echo "ERROR: not enough data"
+#
+# note: If there is not enough data in the stack, it will fill as many of the variables
+# as possible, blank any remaining variables and then will return non-zero error code.
+function stackPop
+{
+	local name=${1}
+	local empty=
+	shift
+	while [[ $# -ne 0 ]] ; do
+		eval local count='$(( ${#'$name'[@]} - 1))'
+		[[ $count -lt 0 ]] && {
+			empty=true
+			break
+		}
+		eval ${1}=\"\$"{$name"'[$count]}'\"
+		eval unset "$name"'[$count]'
+		shift
+	done;
+	[[ $empty ]] && {
+		while [[ $# -ne 0 ]] ; do
+			eval "${1}"=""
+			shift
+		done;
+		return 1
+	}
+}
+
+# Simple function to clear and unset global stack arrays.
+# @param string $1, $2... are the names of the stack arrays (not a variable)
+# @return undefined
+#
+# example: stackClear MYSTACK ANOTHER_STACK
+function stackClear 
+{
+	while [[ $# -ne 0 ]] ; do
+		unset ${1} 
+		shift
+	done
+}
+
+# Internal function, Exit Handling Code
+OnExitSignal_Handler() {
+	local EXIT_CODE=$?
+	# Call the OnExit Event if it Exists
+	local Event="OnExitEvent"
+	if [[ "$(type -t "${Event}" 2>&1)" = "function" ]] ; then
+		OnExitEvent Exit EXIT $EXIT_CODE
+	elif [[ $(type -t "${!Event}" 2>&1) ]] ; then
+		${!Event} Exit EXIT $EXIT_CODE
+	fi;
+	# Run through Exit Event Stack
+	while [[ true ]] ; do 
+		stackPop OnExitEventStack Event || break
+		${Event} $EXIT_CODE		
+	done
+	[[ ${USE_COLORS} ]] && setColor Reset
+	if [[ ${AUTO_CLEANUP} = true ]] ; then
+		local line
+		if [[ -f "${TEMP_FILE_LIST}" ]] ; then 
+			while read line ; do 
+				[[ -e "$line" ]] && {
+					[[ ${USE_COLORS} ]] && setColor Reset Dark_Gray >&2
+					echo -n "Automatic cleanup of temporary item \`${line##*'/'}'." >&2
+					[[ ${USE_COLORS} ]] && setColor Default >&2
+					echo >&2
+					rm -rf "$line"
+				}
+			done<"${TEMP_FILE_LIST}"
+		fi
+	fi
+	[[ -f "$TEMP_FILE_LIST" ]] && rm -f "$TEMP_FILE_LIST"
+	#  Terminate with Exit Code
+	trap - EXIT
+	exit $EXIT_CODE
+}
+
+# Add a function to the script exit process function stack.
+# @param string $1, $2... are the names of the functions to add to the exit process
+# @return undefined
+#
+# example: registerOnExitEvent DO_THIS_LAST DO_THIS_BEFORE
+#
+# Note: When the function is called its $1 parameter will be the scripts exit code.
+# Exit functions are called in the reverse order they are added.
+# These functions will be called automatically and immediately before the 
+# script terminates wether or the script completes or is terminated with an 
+# exit command.
+function registerOnExitEvent
+{
+	while [[ $# -gt 0 ]] ; do
+		stackPush OnExitEventStack "${1}"
+		shift
+	done
+}
+
+# Translate a path to an actual path by following links. 
+# @param string path to translate
+# @return text standard output
+#
+# NOTE: If an error occurs, it returns error code and original path.
+# For example: if a link to /bin in the users home directory is called sysbin
+# then getUnlinkedPath "${HOME}/sysbin" would return /bin 
+function getUnlinkedPath
+{
+	local src="${1}"
+	local dest=""
+	local bit
+	local temp
+	while [[ "$src" != "" ]] ; do
+		bit="${src%%/*}"
+		src="${src:$(( ${#bit} + 1))}"
+		[[ $bit = "" ]] && continue
+		temp=$(ls -od "${dest}/${bit}" 2>&1)
+		local ret=$?
+		[[ $ret != 0 ]] && return $ret
+		if [[ "${temp:0:1}" = "l" ]] ; then
+			bit=${temp##*" -> "}
+		fi;
+		dest="${dest}/${bit}"
+	done;
+	if [[ ! -e "$dest" ]] ; then
+		builtin echo "${1}"
+		return 1
+	else
+		builtin echo "$dest"
+		return 0
+	fi
+}
+
+# Returns the only the path for a given filename
+# @param string $1 is pathname/filename
+# @return text to standard output
+function getFilePathOnly
+{
+	builtin echo "${1%/*}"
+}
+
+# Returns the filename with it's path.
+# @param string $1 is the filename whose path to return.
+# @return text to standard output
+#
+# note: If a path is not provided or if the provided path is relative, then the path
+# that is returned is prefixed with the current working directory.
+function getFilenameWithPath {
+	[[ "${1:0:1}" != "/" ]] && builtin echo "${PWD}/${1}" || builtin echo "${1}"
+}
+
+# internal function, used by require, requireOnce, include, includeOnce
+includeSourceCode() {
+	local mode=${1:0:1}
+	local mult=${1:1:1}
+	local ret=0
+	shift
+	while [[ ${#@} -ne 0 ]] ; do
+		local fstr="$1"
+		shift
+		local nstr="${fstr##*/}"
+		local pstr="${fstr:0:$((${#fstr} - ${#nstr}))}"
+		[[ "$pstr" = "" ]] && local pstr="${BSSDTK_DIR}/"
+		local istr="INCLUDED__PATHS_OF_${nstr}"
+		local i=
+		for i in "${!istr}" ; do
+			[[ "$i" = "$pstr" ]] && break
+		done;
+		[[ "${i}" = "${pstr}" ]] && [[ "$mult" = "O" ]] && continue
+		if [[ -f "${pstr}${nstr}" ]] ; then		
+			. "${pstr}${nstr}"
+			[[ "${i}" != "${pstr}" ]] && stackPush "${istr}" "${pstr}"
+			[[ "${i}" = "" ]] && stackPush "INCLUDED__FILES" "${pstr}${nstr}"
+		else
+			[[ "$mode" = "R" ]] && echoError 1 "Required file \`${pstr}${nstr}' is missing."
+			local ret=1
+		fi;
+	done;
+	return $ret
+}
+
+# Require an additional script to be included. 
+# @param string $1, $2... list of files to require and include.
+# @return undefined
+#
+# note: Repeatedly requiring the same script
+# will repeatedly include it. Unless a full path is provided, the script is considered
+# to be a bssdtk library file and will search only the root of the "${BSSDTK_DIR}" 
+# directory for the file. The "${BSSDTK_DIR}" points directly to the main directory
+# of the currently running bssdtk library. Also, the script will terminate if it cannot 
+# find the required file to be included.
+#
+# example: require pipes strings ${HOME}/something_else
+function require
+{
+	includeSourceCode "RM" "$@" || exit 1
+	return 0
+}
+
+# This function is the same as the `require' function.
+# Except the script will only be included one time, regardless of how many times
+# it is referenced.
+# @param string $1, $2... list of files to require and include.
+# @return undefined
+function requireOnce
+{
+	includeSourceCode "RO" "$@" || exit 1
+	return 0
+}
+
+# This function is the same as the `require' function.
+# Except the script will not terminate but will return non-zero error code.
+# @param string $1, $2... list of files to include.
+# @return exitcode non-zero if could not be included
+function include
+{
+	includeSourceCode "IM" "$@"
+	return $?
+}
+
+# This function is the same as the `requireOnce' function.
+# Except the script will not terminate but will return non-zero error code.
+# @param string $1, $2... list of files to include.
+# @return exitcode non-zero if could not be included
+function includeOnce
+{
+	includeSourceCode "IO" "$@"
+	return $?
+}
+
+# registered Externals that cannot be found call this function to generate an
+# error message and terminate the script
+missingExternal ()
+{
+	echoError 1 "Missing external command \`${1}'"
+}
+
+# function that creates dynamic functions that override external program calls.
+makeExternal ()
+{
+	local ext=$2
+	local ovr="OVERRIDE__${1}"
+	if [[ "$2" = "missingExternal" ]] ; then
+		local func="function $1 
+		{
+		if [[ \""'${'"$ovr}\" != \"\" ]] ; then
+		\""'${'"$ovr}\" \""'$@'"\"
+		else
+		missingExternal $1 "'$@'"
+		fi
+		}"
+	else
+		local func="function $1 
+		{ 
+		if [[ \""'${'"$ovr}\" = \"\" ]] ; then
+		\""'${'"$ext}\" \""'$@'"\"
+		else
+		\""'${'"$ovr}\" \""'$@'"\"		
+		fi
+		}"
+	fi;
+	eval "$func"
+}
+
+# Register an external program that the library uses. The program must reside in one
+# of the directories listed in the PATH environment variable.
+# @param string $1, $2.... list of external programs used by script.
+# @return exitcode non-zero if any of the programs cannot be found.
+#
+# example: register ls command, terminate if not found then use ls command.
+#   registerExternals ls chmod || exit 1
+#   ls * 
+#	
+# example: register blahblahblah. but don't terminate if it is missing.  Calling 
+# the missing function will cause script to exit with an error message and code.
+#   registerExternals blahblahblah 
+#   blahblahblah
+#	
+# Note: This function populates several global variables and creates internal dynamic 
+# functions that reference the external programs. 
+# It creates a EXTERNAL__${program_name} variable containing exact path of the program.
+# It will also add found programs to the EXTERNALS__FOUND array and add programs that
+# cannot be found or executed by the user to EXTERNALS__MISSING.
+# Use the `isNotMissing' function to check what was missing or has not been registered.
+function registerExternals
+{
+	local failed=false
+	while [[ ${#@} -ne 0 ]] ; do
+		local fnstr="EXTERNAL__${1}"
+		local festr="${1}"
+		shift
+		if [[ "${!fnstr}" = "" ]] ; then		
+			local temp_path="${PATH}"
+			while [[ ${#temp_path} -gt 0 ]] ; do
+				local cur_path="${temp_path%%:*}"
+				local temp_path="${temp_path:$(( ${#cur_path} + 1 ))}"
+				[[ "$cur_path" = '/' ]] && local cur_path=""
+				if [[ -x "${cur_path}/${festr}" ]] ; then
+					eval "$fnstr"=\"${cur_path}/${festr}\"
+					stackPush EXTERNALS__FOUND "${festr}"
+				fi
+			done
+			if [[ "${!fnstr}" = "" ]] ; then
+				stackPush EXTERNALS__MISSING "${festr}"
+				local failed=true
+				local fnstr="missingExternal"
+			fi
+			makeExternal $festr $fnstr
+		fi
+	done
+	[[ $failed = true ]] && return 1 || return 0
+}
+
+# Test to see if external programs have been registered and found. Will return a 
+# non-zero error code if any given function should not be used.
+# @param string list of external program names
+# @return exitcode non-zero if any were not registered or found
+#
+# example: isNotMissing ls cut tr || exit 1
+function isNotMissing 
+{
+	while [[ ${#@} -ne 0 ]] ; do
+		local fnstr="EXTERNAL__${1}"
+		[[ "${!fnstr}" = "" ]] && return 1
+		shift
+	done
+}
+
+# Register a function to override either a bash-built function or an external program.
+# This can be used before, after or without calling the registerExternals function for
+# external programs. 
+# @param string $1, $2... list of functions to internalize. 
+# @return undefined
+#
+# example: overriding ls command to never output ls, but to display a message.
+#	function INTERNAL__ls
+#	{ echo "no ls command for you!" } 	
+#	registerInternals ls
+#	ls *
+function registerInternals
+{
+	while [[ ${#@} -ne 0 ]] ; do
+		registerExternals "${1}"
+		local fnstr="OVERRIDE__${1}"
+		eval "${fnstr}=\"INTERNAL__${1}\""
+		shift
+	done
+}
+
+# Registers Override functions. This is identical to using registerExternals followed by
+# registerInternals.
+#
+# note: The existence of the externals are not validated since they will be overridden.
+function registerOverrides
+{
+	registerExternals "${@}"
+	registerInternals "${@}"
+}
+
+# Core Library Initialization Routines
+
+# Trap Script exit to exit handling code
+trap "OnExitSignal_Handler" 				EXIT
+
+# detect actual location of this file and set its path as location of library files
+declare -r BSSDTK_DIR=$(getUnlinkedPath $( getFilePathOnly $( getFilenameWithPath "${BASH_SOURCE[0]}" )))
+
+[[ ! ${BSSDTK_DIR} ]] && echoError 1 "Internal error: Unable to local library files."
+
+# Abstract function to populate OS_TITLE & OS_VERSION global variables.
+setDistribution ()
+{ :; }
+
+# detect os x, and set $OS_X to true if it is running on a Mac
+if [[ "${OSTYPE#darwin*}" != "${OSTYPE}" ]] ; then
+	declare -r OS_X=true
+	declare -r OS_PLATFORM=unix
+else
+	if [[ "${OSTYPE/linux/}" != "${OSTYPE}" ]] ; then
+		declare -r OS_PLATFORM="linux"
+	else
+		declare -r OS_PLATFORM=${OSTYPE//-/_}
+	fi;
+fi;
+
+registerExternals date sudo
+
+registerExternals ls tput || echoError 1\
+ "Internal error: Unable to local required external programs."
+
+includeOnce internals
+
+requireOnce "${BSSDTK_DIR}/compatibility/${OS_PLATFORM}"
+if [[ ${OS_X} ]] ; then
+	requireOnce "${BSSDTK_DIR}/compatibility/macintosh"
+else
+	includeOnce "${BSSDTK_DIR}/compatibility/${OSTYPE//-/_}"
+fi
+
+[[ -f "${BSSDTK_DIR}/version.id" ]] && . "${BSSDTK_DIR}/version.id"
+
+[[ ! ${COLUMNS} ]] && declare -r COLUMNS=$(tput cols)
+[[ ! ${LINES} ]] && declare -r LINES=$(tput lines)
+
+if [[ "${OS_TITLE}" = "" ]] || [[ "${OS_VERSION}" = "" ]] ; then
+	setDistribution
+	registerExternals cat grep && {
+		[[ $(cat "${HOME}/.bssdtk" 2>&1 | grep "OS_TITLE=") = "" ]] && echo "OS_TITLE=\"${OS_TITLE}\"" >>"${HOME}/.bssdtk" 2>&1
+		[[ $(cat "${HOME}/.bssdtk" 2>&1 | grep "OS_VERSION=") = "" ]] && echo "OS_VERSION=\"${OS_VERSION}\"" >>"${HOME}/.bssdtk" 2>&1
+	}
+fi;
+
+# Check if the script is run with super user privileges. If it is not, show message and 
+# relaunch it using sudo if password is provided.
+#
+# @param command If the first param is "ask", password will always be required.
+# @param string Any remaining params are used to replace default prompt.
+# @return exitcode non-zero if failed to gain super user privileges.
+# 
+# note: Since the script will be rerun if the Super User password is provided, 
+# requestSuperUser should be run near the beginning of the script to prevent duplicate
+# messages and processing.
+function requestSuperUser
+{
+	[[ ${UID} = 0 ]] && return 0
+	registerExternals sudo sh
+	[[ "$1" = "ask" ]] && {
+		sudo -k
+		shift
+	}
+	[[ ${@} ]] && local spt="${@}" || local spt="This program is requesting root level access. Password: "
+	sudo -p "${spt}" echo -n && {
+		sudo sh "${0}" "${@}" 
+		exit "${?}"
+	}
+	return 1
+}
+
+# Ensure script is run with super user privileges. If it is not, show message and 
+# relaunch it using sudo.
+#
+# @param command If the first param is "ask", password will always be required.
+# @param string Any remaining params are used to replace default prompt.
+# @return undefined
+#
+# note: Since the script will be rerun if the Super User password is provided, 
+# requireSuperUser should be run near the beginning of the script to prevent duplicate
+# messages and processing.
+function requireSuperUser
+{
+	[[ ${UID} = 0 ]] && return 0
+	registerExternals sudo sh
+	[[ "$1" = "ask" ]] && {
+		sudo -k
+		shift
+	}
+	[[ ${@} ]] && local spt="${@}" || local spt="This program requires root level access. Password: "
+	sudo -p "${spt}" sh "${0}" "${@}" 
+	exit "${?}"
+}
+
+# Simple function to test if user currently has Super User privileges without stopping
+# or prompting the user for the admin password.
+#
+# return exitcode 0 for yes, 1 for no or error.
+function isSuperUser #function isPrivileged 
+{
+	( sudo -n true 2>&1 ) >/dev/null && return 0 || return 1
+}
+
+registerOverrides mktemp
+
+INTERNAL__mktemp () {
+	local fname="${0##*'/'}"
+	local fname="${fname//./+}"
+	local fname="${fname// /_}"
+	[[ "$fname" = "" ]] && fname="bssdtk"
+	local tmp="$TMPDIR"
+	[[ "$tmp" = "" ]] && local tmp="/tmp"
+	[[ "${tmp:(-1)}" != "/" ]] && tmp="${tmp}/"
+	local ret
+	if [[ ${OS_X} ]] ; then
+		if [[ "${1}" != '-d' ]]; then
+			fname=$("$EXTERNAL__mktemp" -t "${fname}")
+			echo -n ''>"$fname"
+			ret=$?
+		else 
+			fname=$("$EXTERNAL__mktemp" -d "${tmp}${fname}.XXXXXXXX")
+			ret=$?
+		fi
+	else
+		fname=$("$EXTERNAL__mktemp" "$@")
+		ret=$?
+	fi;
+	[[ "${TEMP_FILE_LIST}" != "" ]] && {
+		echo "$fname">>"${TEMP_FILE_LIST}"
+	}
+	[[ $ret -ne 0 ]] && return $ret 
+	echo "$fname"
+}
+
+TEMP_FILE_LIST="$(mktemp)"
+
+# Disable external sound routines. Include sound library to make them work again.
+say () {
+	return 1
+}
+
+echoSay () {
+	echo "$@"
+}
+
+play () {
+	return 1
+}
+
+

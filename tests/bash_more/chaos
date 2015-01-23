@@ -1,0 +1,30 @@
+#!/bin/sh
+# Random Number Testing Sub-script
+
+# If we reseed the random number generator, with a specified number
+# then the same numbers would always be generated. 
+# RANDOM=0
+# RANDOM=$$
+
+A=$RANDOM
+B=$RANDOM
+
+# echo $A, $B
+
+[[ ${A} = "" ]] && {
+	shtest "${A}" 	"any number" 			"generate a random number"
+	shcheck
+}
+
+[[ ${A} = ${B} ]] && {
+	shtest "${A}" 	"any other number" 		"generate a new random number"
+	shcheck
+}
+
+
+# Poor entropy random number 1-10
+A=$(($RANDOM % 10 + 1))
+# echo $A
+
+unset A
+unset B

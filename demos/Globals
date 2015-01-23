@@ -1,0 +1,18 @@
+#!/bin/sh
+
+# Simple script show some of the Toolkits Global variables
+
+# Include Bash Shell Script Development Toolkit Core Library
+. /opt/bssdtk/core
+
+echo Actual toolkit resides in directory: \`$BSSDTK_DIR\'
+[[ $OS_X ]] && echo Running on Macintosh || echo Running on $OS_PLATFORM
+
+echo The following script libraries are being included:
+echo ${INCLUDED__FILES[@]}
+
+echo The following external programs are being used:
+echo ${EXTERNALS__FOUND[@]}
+
+echo The following external programs were missing:
+echo ${EXTERNALS__MISSING[@]}

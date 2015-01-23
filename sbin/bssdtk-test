@@ -1,0 +1,128 @@
+#!/bin/sh
+
+# Script default values
+TIMEOUT=5		# Default question timeout in seconds
+
+# If version information file exists, include it.
+if [[ -f "/opt/bssdtk/version.id" ]] ; then
+	. /opt/bssdtk/version.id
+
+	# Display Title & Version Information
+	echo ${bssdtk_company} ${bssdtk_longname} platform testing script.
+	echo Version ${bssdtk_version}-${bssdtk_build}
+	echo
+	
+	# This needs to be fixed and moved into install tools.
+	chmod +x /opt/bssdtk/tests/*
+	chmod +x /opt/bssdtk/tests/bash_more/*
+	# chmod +x /opt/bssdtk/demos/*
+	
+else
+	echo bssdtk platform testing script.
+	echo bssdtk not installed.
+	echo
+fi;
+
+# initial default value bash test, should never fail
+ask="${ask:-n}"
+[[ "${ask}" != "n" ]] && {
+	echo Bash failed to assign a default value to variable!
+	echo Testing aborted.
+	exit 1
+}
+# Test that bash is comparing to multiple values, should never fail
+[[ "${ask}" = [Nn] ]] || {
+	echo Bash failed to check against multiple values of variable!
+	echo Testing aborted.
+	exit 1
+}
+
+unset ask
+[[ -z "${ask}" ]] && [[ -z "${ask+x}" ]] || {
+	if [[ -z "${ask}" ]] ; then
+		echo Bash cleared a variable with unset. It should have undefined it!
+	else
+		echo Bash unset command completely failed!
+	fi;
+	echo Testing aborted.
+	exit 1
+}
+
+echo Wait ${TIMEOUT} seconds for automated testing.
+# Prompt to procede with testing, timeout after 10 seconds
+read -t ${TIMEOUT} -p "Continue (Y/n)?" ask 
+[[ -z "${ask}" ]] && [[ -z "${ask+x}" ]] && {
+	echo "ok"
+	echo
+	echo "Going to perform unattended test by setting timeout value to 0"
+	TIMEOUT=0
+	sleep 2
+}
+
+# Reset ask variable with default answer of one was not provided
+ask="${ask:-Y}"
+
+# If answer is not yes then abort with error code
+[[ ! ${ask} = [yY] ]] && {
+	echo User specified termination.
+	exit 1
+}
+
+# Set all tests passed to true
+passed=true
+
+# Iterate through script test folder running each test
+[[ ${0%/*} = ${0} ]] && tmp=$PWD || tmp=$(cd "${0%/*}"; echo $PWD)
+if [[ -d "${tmp%/*}/tests" ]] ; then
+	tpath="${tmp%/*}/tests" 
+	
+	# Ensure test scripts sre executable.
+	chmod -R +x "${tpath}/"*
+	# chmod +x /opt/bssdtk/tests/bash_more/*
+
+else
+	tpath="/opt/bssdtk/tests"
+fi;
+unset tmp
+
+for tests in "${tpath}/"* ; do
+
+	# if result ends in *, skip this entry
+	[[ "${tests:(-1)}" = '*' ]] && {
+		echo No test scripts found
+		continue
+	}
+	
+	# Skip directories
+	[[ -d "${tests}" ]] && continue
+	
+	# Show message and execute script
+	echo
+	echo "Executing \`${tests##*/}' test."
+	"${tests}" "${TIMEOUT}" 
+	if [[ $? = 0 ]] ; then 
+		echo "test of \`${tests##*/}' passed."
+	else
+		# any test failure will permanently set passed to false
+		passed=false
+		# if script fails prompt to continue
+		read -t ${TIMEOUT} -p "Test \`${tests##*/}' Failed, Continue (Y/n)?" ask 
+		[[ ${TIMEOUT} -gt 1 ]] && [[ ${ask} != "" ]] && echo 
+		ask="${ask:-Y}"
+		[[ ! ${ask} = [yY] ]] && {
+			echo User specified termination.
+			exit 1
+		}
+	fi;
+
+done
+
+# Show overall result of tests end exit
+echo
+if [[ ${passed} = true ]] ; then
+	echo Testing completed, everything looked good.
+	exit 0
+else
+	echo Testing completed, there were problems.
+	exit 1
+fi;

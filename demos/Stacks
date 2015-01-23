@@ -1,0 +1,27 @@
+#!/bin/sh
+
+# Demonstration of pushStack & popStack 
+
+#!/bin/sh
+
+# Include Bash Shell Script Development Toolkit Core Library
+. /opt/bssdtk/core
+
+# Create and add each of these items into MyStack
+pushStack MyStack Hello There My Friend
+
+# Add these strings to MyStack
+stackPush MyStack "How are you today?" "What is new?"
+
+echo "This is the entire stack:"
+echo ${MyStack[*]}
+echo
+
+echo "Pulling Item by Item off of the stack:"
+while stackPop MyStack Item ; do
+	echo "$Item"
+done;
+echo
+
+echo "Now the stack is empty again:"
+echo ${MyStack[*]}

@@ -1,0 +1,5 @@
+#!/bin/sh
+
+# Internalized versions of several external utilities for performance enhancement.
+
+# registerInternals cut tr

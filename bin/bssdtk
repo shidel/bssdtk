@@ -1,0 +1,81 @@
+#!/bin/sh
+
+# BSSDTK generic script utility.
+#
+# Available commands:
+##		-l	List all functions or only functions in library "[name]".
+# 		-f	Execute function in "library" called "name" with "[options...]".
+# 		-h	Show all help or help for functions called "[search]"
+#
+# example: bssdtk -l 
+#
+# example: bssdtk -l core
+#
+# example: bssdtk -h internal
+#
+# example: echo "3.14" | bssdtk -f strings padZero 5.3
+#
+# NOTE: This work is subject to the terms of the Mozilla Public License, v. 2.0. 
+# If a copy of the MPL was not distributed with this file, You can obtain one at 
+# http://mozilla.org/MPL/2.0/.
+
+# Simple code to see if we are a script included in bssdtk. If the parent directory
+# to main script contains a file called core, then we will use it's bssdtk library 
+# instead of any installed version. Making it possible to use bsddtk tools without
+# installing bssdtk first. This also makes it possible to use the bssdtk library to 
+# tools to install itself. Most normal scripts should just reference the latest installed
+# version in the /opt/bssdtk directory.
+[[ ${0%/*} = ${0} ]] && tmp=$PWD || tmp=$(cd "${0%/*}"; echo $PWD)
+[[ -f "${tmp%/*}/core" ]] && tmp="${tmp%/*}/core" || tmp="/opt/bssdtk/core"
+. "${tmp}"
+unset tmp
+
+
+function helpSelf
+{
+	requireOnce help
+	echoError 0 "Command line parameters missing!"
+	echo
+	helpShow "$0" main
+	helpShow "$0" only helpSelf
+	exit 1
+}
+
+[[ $# = 0 ]] && helpSelf
+
+if [[ "${1}" = '-l' ]] ; then
+	requireOnce help	
+	if [[ "${2}" != "" ]] ; then
+		if [[ -f "${BSSDTK_DIR}/${2}" ]] ; then
+			helpShow "${BSSDTK_DIR}/${2}" overview
+		else
+			echoError 0 "Library called \`${2##*/}' not found."
+			echo
+			helpShowLibraries
+		fi;
+	else
+		helpShowAll list
+	fi;
+	exit
+elif [[ "${1}" = '-h' ]] ; then
+	requireOnce help
+	[[ "${2}" != "" ]] && helpShowAll search "${2}" || helpShowAll all
+	exit
+elif [[ "${1}" != '-f' ]] ; then 
+	requireOnce colors
+	echoError 1 "Only -f, -l or -h options is supported at present."
+fi
+shift
+
+requireOnce "${1}"
+shift
+
+fnname="${1}"
+shift
+
+[[ $(type -t "${fnname}" 2>&1) != "function" ]] && {
+	echo Internal Error: function \`${fnname}\' not found
+	exit 1
+}
+
+"${fnname}" "${@}"

@@ -1,0 +1,23 @@
+#!/bin/sh
+
+# Development testing script. Used only in creating and testing of BSSDTK libraries and
+# their functions.
+
+# Simple code to see if we are a script included in bssdtk. If the parent directory
+# to main script contains a file called core, then we will use it's bssdtk library 
+# instead of any installed version. Making it possible to use bsddtk tools without
+# installing bssdtk first. This also makes it possible to use the bssdtk library to 
+# tools to install itself. Most normal scripts should just reference the latest installed
+# version in the /opt/bssdtk directory.
+[[ ${0%/*} = ${0} ]] && tmp=$PWD || tmp=$(cd "${0%/*}"; echo $PWD)
+[[ -f "${tmp%/*}/core" ]] && tmp="${tmp%/*}/core" || tmp="/opt/bssdtk/core"
+. "${tmp}"
+unset tmp
+
+requireOnce debug random
+
+randomChars 50 
+randomChars 50 
+randomChars 50 
+randomChars 50 
+randomChars 50 

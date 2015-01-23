@@ -1,0 +1,119 @@
+#!/bin/sh
+
+# BSSDTK development debugging utilities. 
+#
+# note: When used, debug should be the first library included. That way it can also
+# track changes to global variables defined in other libraries.
+#
+
+registerExternals grep date
+
+DEBUG_FILTER="^BASH_ARGC=\|^BASH_ARGV=\|^BASH_SOURCE=\|^BASH_LINENO=\|^FUNCNAME=\
+\|^SUDO_PS1=\|^PIPESTATUS=\|^_=\|^FROM_HEADER=\|^__CF_USER_TEXT_ENCODING=\
+\|^EXTERNALS__\|^EXTERNAL__\|^INCLUDED__\
+\|^PS1_ORIGINAL="
+
+debugVariables () {
+	if [[ ${#@} -ne 0 ]] ; then
+		set | grep -v "^DEBUG__SNAPSHOT=\|^DEBUG_FILTER=\|^DEBUG__SNAPSHOT_NEW=" | grep -v ${@} | grep -v ${DEBUG_FILTER}
+	else
+		set | grep -v "^DEBUG__SNAPSHOT=\|^DEBUG_FILTER=\|^DEBUG__SNAPSHOT_NEW=" | grep -v ${DEBUG_FILTER}
+	fi;
+}
+
+# Takes a snapshot of all current declared variables for later comparison with
+# debugCompare. Useful in checking for variable leakage. 
+#
+# @param string Additional variables to filter with grep.
+# @return undefined
+#
+# note: currently snapshots do not support arrays.
+function debugSnapshot
+{
+	unset DEBUG__SNAPSHOT
+	DEBUG__SNAPSHOT=("$(debugVariables $@ )")
+}
+
+# Compare current variables and values with the last snapshot and display any changes.
+# 
+# @param string Additional variables to filter with grep.
+# @return text to standard output.
+function debugCompare
+{
+	unset DEBUG__SNAPSHOT_NEW
+	DEBUG__SNAPSHOT_NEW=("$(debugVariables $@ )")
+	local line=""
+	local check=""
+	local value=""
+	while IFS='' read line ; do
+		while IFS='' read check ; do
+			value="$check"
+			[[ "${check%%=*}" = "${line%%=*}" ]] &&	break
+		done<<<"${DEBUG__SNAPSHOT[@]}"
+		[[ "${line:(-2)}" = "\")" ]] && continue
+		[[ "${line%%=*}" = "${line}" ]] && continue
+		if  [[ "${value}" != "${line}" ]] ; then
+			if [[ ${USE_COLORS} ]] ; then
+				[[ "${value%%=*}" != "${line%%=*}" ]] && setColor Light_Green || setColor Yellow
+			fi;
+			[[ "${value%%=*}" != "${line%%=*}" ]] && echo -n "(+) " || echo -n "(=) "
+			[[ ${USE_COLORS} ]] && setColor Default
+			echo "$line"
+		fi;
+	done<<<"${DEBUG__SNAPSHOT_NEW[@]}"
+	while IFS='' read line ; do
+		while IFS='' read check ; do
+			value="$check"
+			[[ "${check%%=*}" = "${line%%=*}" ]] &&	break
+		done<<<"${DEBUG__SNAPSHOT_NEW[@]}"
+		# [[ "${value:0:1}" != "(" ]] && [[ "${value:(-2)}" = "\")" ]] && value=""
+		check="${line%%=*}"
+		if [[ "${!check:-fail}" = "fail" ]] && [[ "${line%%=*}" != "${line}" ]] ; then
+			if [[ ${USE_COLORS} ]] ; then
+				setColor Light_Red
+			fi;
+			echo -n "(-) "
+			[[ ${USE_COLORS} ]] && setColor Default
+			echo "$check"
+		fi;
+	done<<<"${DEBUG__SNAPSHOT[@]}"
+	unset DEBUG__SNAPSHOT_NEW
+}
+
+debugSnapshot "^i=\|^istr=\|^fstr=\|^mode=\|^mult=\|^nstr=\|^pstr=\|^ret=\
+\|^BSSDTK_DIR=\|^COLUMNS=\|^LINES=\|^DUMB_ECHO=\|^USE_PIPE_TEST=\
+\|^UPPERCASE_CHARS=\|^LOWERCASE_CHARS=\
+\|^STANDARD_\|^OS_\
+" 
+
+# Returns the elapsed time in milliseconds since the script startup or lastest timeMark.
+#
+# @param switch -s For elapsed time since script startup. without it will return
+# time since latest timeMark.
+# @return text to standard output
+#
+# note: On systems that do not support date milliseconds (like OS X), accuracy will be
+# limited to greater than (+/-) one second.
+function timeElapsed 
+{
+	local now=$(date +"%s%6N")
+	local now=${now//6N/000000}
+	if [[ "${1}" = "-s" ]] ; then
+		local now=$(( ${now} - ${LAST_MARKED_TIME} ))
+	else
+		local now=$(( ${now} - ${BSSDTK_START_MARK} ))
+	fi;
+	while [[ ${#now} -lt 7 ]] ; do	
+		local now='0'${now}
+	done;
+	echo "${now:0:$(( ${#now} -6 ))}.${now:(-6)}"
+}
+
+# Resets the timeElapsed start time.
+#
+# @return undefined
+function timeMark
+{
+	local LAST_MARKED_TIME=$(date +"%s%6N")
+	local LAST_MARKED_TIME=${LAST_MARKED_TIME//6N/000000}
+}

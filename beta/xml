@@ -1,0 +1,223 @@
+#!/bin/sh
+
+# XML file Parsing Library. 
+#
+# Internal XML parsing is very slow. So, the MAXIMUM_XML_PARSE
+# limit is set rather low by default. Internal parsing only a couple KB could take a minute
+# or more. If the global MAXIMUM_XML_PARSE is set to 0, it can process extremely large XML
+# files. But it may take weeks, months, years or decades. So, it is not recommended you 
+# use the internal XML Parser to process you 100,000 song iTunes library. 
+#
+# Note: the XML library is still under development and is not ready for use.
+
+requireOnce pipes strings
+
+registerOverrides xmlParseToTempDir
+
+[[ ${MAXIMUM_XML_PARSE} ]] || MAXIMUM_XML_PARSE=1500
+
+alias xmlParseTrim='pos=0; while [[ "${line:$pos:1}" = [" 	"] ]] ; do (( pos++ )); done; [[ $pos -ne 0 ]] && line="${line:$pos}"'
+
+INTERNAL__xmlParseToTempDir () {
+	if [[ ${EXTERNAL__xmlParseToTempDir} ]] ; then
+		${EXTERNAL__xmlParseToTempDir} "$@"
+	else
+		local xkeys="${1}"
+		local xfile="${2}"
+		local tdir="${3}"
+		registerExternals cat 
+		cat "${xfile}" | ( # subshell all variable changes are discarded.
+			count=0
+			state=0
+			error=0
+			tag_name=''
+			tag_path=()
+			tag_closed=true
+			while IFS='' read -r line ; do
+				# trim leading whitespace & tabs
+				xmlParseTrim
+				[[ ${#line} -eq 0 ]] && continue
+				while [[ ${#line} -ne 0 ]] ; do
+					while [[ ${#line} -ne 0 ]] ; do
+						if [[ "${line:0:1}" = "<" ]] ; then
+							tag_name="${line%%' '*}"
+							tag_name="${tag_name%%'>'*}"
+							tag_name="${tag_name:1}"
+							[[ "$tag_name" = "" ]] && {
+								echoError 0 "Invalid file format \`${xfile##*/}'."
+								return 1
+							}
+							line="${line:$(( ${#tag_name} + 1 ))}"
+							tag_name=$(caseLower "$tag_name")
+							xmlParseTrim
+							tag_data=()
+							tag_text=()
+							tag_closed=false
+						elif [[ "${line:0:2}" = "/>" ]] ; then
+							tag_closed=true
+							line="${line:2}"
+							# xmlParseTrim
+							break
+						elif [[ "${line:0:1}" = ">" ]] ; then
+							tag_closed=false
+							if [[ "${tag_name:0:1}" = "/" ]] || [[ "${tag_name:(-1)}" = '/' ]] ; then
+								tag_closed=true
+							fi;
+							line="${line:1}"
+							# xmlParseTrim
+							break
+						else
+							opt="${line%%'='*}"
+							[[ "${opt:(-1)}" = ">" ]] && opt="${opt:0:$(( ${#opt} - 1 )) }"
+							line="${line:$(( ${#opt} + 1))}"
+							# xmlParseTrim
+							if [[ "${line:0:1}" = '"' ]] ; then
+								line="${line:1}"
+								data="${line%%'"'*}"
+								line="${line:$(( ${#data} + 1))}"
+								data="\"${data}\""
+								# xmlParseTrim
+							else
+								data="${line%%' '*}"
+								line="${line:$(( ${#data} + 1))}"
+								# xmlParseTrim								
+							fi;
+							if [[ "$data" != "" ]] ; then
+								tag_data[${#tag_data[@]}]="$opt=$data"
+							elif [[ "$opt" != "" ]] ; then
+								tag_data[${#tag_data[@]}]="$opt"
+							fi
+						fi;
+					done;
+					if [[ "${tag_name:0:1}" = '/' ]] ; then
+						unset tag_path[$(( ${#tag_path[@]} - 1))]
+					else
+						[[ "${tag_name:(-1)}" = '/' ]] && tag_name="${tag_name:0:$(( ${#tag_name} - 1 ))}"				
+						tag_path[${#tag_path[@]}]=$tag_name
+						case $state in
+							(0) # <?xml version="1.0" encoding="UTF-8"?>
+								[[ "$tag_name" != "?xml" ]] && { error=1; break; }
+								version="1.0"
+								encoding="UTF-8"
+								tag_closed=true
+								state=1
+							;;
+							(1)
+								if [[ "$tag_name" = "!doctype" ]] ; then
+									tag_closed=true
+									state=2
+								fi;
+							;;
+							(*)
+						esac
+						[[ $tag_closed != true ]] && {			
+							tag_text="${line%%'<'*}"
+							# this is probably not necessary and may cause a problem
+							# finding end of xml data.
+							# while [[ ${#tag_text} = ${#line} ]] ; do
+							# 	read -r morelines
+							# 	line="${line} ${morelines}"
+							# 	tag_text="${line%%'<'*}"
+							# done;
+							line="${line:$(( ${#tag_text} )) }"
+							# xmlParseTrim
+						}
+						[[ $tag_name = "key" ]] && {
+							tag_key="$tag_text"
+							# echo $tag_key
+						}
+						echo "TAG $tag_name, PATH ${tag_path[@]}, CLOSED $tag_closed, $tag_key"
+						# echo '  '${tag_text[@]}
+
+						[[ $tag_closed = true ]] && unset tag_path[$(( ${#tag_path[@]} - 1))]
+						# echo "##TAG $tag_name, PATH ${tag_path[@]}, CLOSED $tag_closed"
+						# echo
+
+					fi;
+				done
+				[[ $MAXIMUM_XML_PARSE -gt 0 ]] && [[ $count -gt $MAXIMUM_XML_PARSE ]] && {
+					error=2
+					break
+				}
+				(( count++ ))
+			done;
+			return $error # from subshell
+		)
+		return $?
+	fi;
+}
+
+# Parse a series of XML files. 
+#
+# @param function Name of callback function.
+# @param string List of critical XML keys.
+# @param filenames One or more XML filenames.
+# @return exitcode non-zero when error occurred and aborted.
+#
+# note: callback function must exist and will be called at the end of parsing each XML
+# file regardless if there was an error in processing it. See xmlCallbackDummy for 
+# information on writing a callback function.
+function xmlParse
+{
+	local xfunc="${1}"
+	if [[ $(type $xfunc 2>&1 | grep function >/dev/null && echo function) != "function" ]] ; then 
+		echoError 1 "Missing callback function paramater for xmlParse" 
+	fi;
+	shift
+	local xkeys=",${2},"
+	shift
+	while [[ ${#@} -ne 0 ]] ; do
+		local xfile="${1}"
+		shift
+		echo $xfile
+		[[ ! -f "$xfile" ]] && {
+			echoError 0 "Unable to locate XML file \`$xfile'."
+			return 1
+		}
+		local tempdir="$(mktemp -d)"
+		# tempdir="xfile"; [[ ! -d "$xfile" ]] && mkdir "$xfile"
+		xmlParseToTempDir "$xkeys" "${xfile}" "${tempdir}" || {
+			local ret=$?
+			if [[ $ret = 2 ]] ; then
+				echoError 0 "File \`$xfile' was to big and parsing was aborted." \
+				"Change the value of MAXIMUM_XML_PARSE=$MAXIMUM_XML_PARSE to a bigger\
+				value in your configuration file to increase this limit.\
+				Or, consider obtaining the external binary xmlParseToTempDir to\
+				remove this limitation." 
+			else
+				echoError 0 "Unable to parse file \`$xfile' may be corrupt."
+			fi;
+		}
+		"$xfunc" "$ret" "${xfile}" "${tempdir}" 
+		local ret=$?
+		[[ $ret -ne 1 ]] && rm -rf "${tempdir}"
+		[[ $ret -gt 1 ]] && return $?
+	done
+	[[ $ret -gt 1 ]] && return $?
+	return 0
+}
+
+# Dummy xmlParse callback function describing incoming parameters and return value for
+# information on designing callback functions.
+#
+# A callback function will be called regardless of successful completion in parsing an xml
+# file. It will not be called when the file could not be found.
+#
+# @param integer XML parser completion code. 
+#		0 = All went well
+#		1 = An error occured
+#		2 = The maximum keys to process limit was exceeded. (MAXIMUM_XML_PARSE, 0=infinite)
+# @param filename Original XML file name.
+# @param directory Temporary directory structure where parsed data resides.
+# @return exitcode
+#		0 = All was good. Delete temporary directory and continue.
+#		1 = All was good. Just continue and leave the temporary directory intact.
+#		2+= Major error. Delete temporary directory, abort processing and return this 
+# errorcode.
+function xmlCallbackDummy
+{
+	echo "$@"
+	[[ ${1} = 2 ]] && return 0
+	[[ ${1} = 1 ]] && return 2
+	 return $1
+}

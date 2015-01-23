@@ -1,0 +1,20 @@
+#!/bin/sh
+
+# Simple script show some of the Toolkits Global variables
+
+# Include Bash Shell Script Development Toolkit Core Library
+. /opt/bssdtk/core
+
+requireOnce procs
+
+# isProcBack -q && { echo "Not Ok to run in background"; exit 1; }
+
+echo "In foreground: $(isProcFore)"
+
+if [[ $(isProcFore)  = "yes" ]] ; then
+	echo "Running in foreground"
+else
+	echo "Running in background"
+fi;
+
+isProcBack $(( $$ * 2 )) && echo "Opps. Should have been an error." 

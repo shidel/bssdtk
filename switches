@@ -1,0 +1,155 @@
+#!/bin/sh
+
+# Function and command line parameter switch parsing utilities.
+
+# Define and parse parameter switches.
+#
+# @param string (required) Switch terminator. Marks the boundary between the setup 
+# parameters and those to be parsed.
+# @param string (required) At least one definition is required. A switch definition 
+# is defined as [short][[,]long][...][:req]. Long switches are associated
+# with the previous short switch. Either or both may be provided. Required parameter
+# count is assumed to be 0 unless specified and applies to the entire group.
+# @return text to standard output
+#
+# example: switchParse - a,alpha,b,beta,c,,delta,g,gamma,epsilon frog:2 x,y,z:1 - "$@"
+#
+# note: Output text is formatted like with the following method. 
+## Each switch is expanded to it's long version if it is defined.
+## Simple switches are always "=true".
+## One parameter switches "=THEIR_VALUE".
+## Multi-parameter switches are "=NUM_LINES" followed by lines of "VALUES".
+## Then the user defined separator ="PARAM_COUNT,DATA_COUNT" followed by lines of raw data.
+# "PARAM_COUNT" is number of params and there data. Multi-switch params (like "-abc")
+# count as 1. 
+function switchParse
+{
+	local short long req
+	local data=()
+	local term="$1"
+	local copt sopt lopt index
+	shift
+	[[ "${term}" = "" ]] && echoError 1 "No switch terminator specified."\
+		"See: bssdtk -h switchParse"
+	local count=0
+	local line
+	# break out switch definitions
+	while [[  ${#@} -ne 0 ]] ; do
+		line="${1}"
+		shift
+		[[ "${line}" = "${term}" ]] && break
+		copt=${line##*:}
+		[[ "${copt}" = "${line}" ]] && copt=0
+		[[ "${copt}" = "" ]] && copt=0
+		line=${line%%:*}
+		[[ "${line}" = "" ]] && echoError 1 "Invalid switch definition \`:${copt}'."
+		while [[ ${line} != "" ]] ; do 
+			sopt=${line%%,*}
+			line=${line:$(( ${#sopt} + 1))}
+			lopt=${line%%,*}
+			if [[ ${#lopt} -gt 1 ]] ; then
+				line=${line:$(( ${#lopt} + 1))}
+			else 
+				lopt=""
+			fi;
+			short[$count]=$sopt
+			long[$count]=$lopt
+			req[$count]=$copt
+			(( count++ ))
+		done
+	done
+	[[ ${short} ]] || echoError 1 "No switches specified." "See: bssdtk -h switchParse"
+	[[ "${line}" != "${term}" ]] && echoError 1\
+		"No secondary switch terminator found to mark parsing start point."\
+		"See: bssdtk -h switchParse"
+	#parse options
+	count=0
+	while [[ ${#@} -ne 0 ]] ; do
+		line="${1}"
+		shift
+		if [[ ${line:0:2} = "--" ]] ; then
+			(( count++ ))
+			lopt=${line:2}
+			[[ "${lopt}" = "" ]] && lopt='--'
+			index=0
+			while [[ $index -lt ${#long[@]} ]] ; do
+				[[ "${lopt}" = "${long[$index]}" ]] && break
+				(( index++ ))
+			done
+			[[ "${lopt}" != "${long[$index]}" ]] && {
+				echoError 0 "Invalid switch \`${lopt}'."
+				return 1
+			}
+			[[ ${#@} -lt ${req[$index]} ]] && {
+				echoError 0 "Missing parameters switch \`${lopt}'."
+				return 1
+			}
+			index=${req[$index]}
+			if [[ $index -eq 0 ]] ; then
+				echo ${lopt}"=true"
+			elif [[ $index -eq 1 ]] ; then
+					echo ${lopt}"=${1}"
+					shift
+					(( count++ ))
+			else
+				echo "${lopt}=${index}"
+				while [[ $index -gt 0 ]] ; do
+					echo "${1}"
+					shift
+					(( index-- ))
+					(( count++ ))
+				done;
+			fi;
+		elif [[ ${line:0:1} = "-" ]] ; then
+			(( count++ ))
+			line=${line:1}
+			[[ "${line}" = "" ]] && line='-'
+			while [[ ${#line} -ne 0 ]] ; do
+				sopt=${line:0:1}
+				line=${line:1}
+				index=0
+				while [[ $index -lt ${#short[@]} ]] ; do
+					[[ "${sopt}" = "${short[$index]}" ]] && break
+					(( index++ ))
+				done
+				[[ "${sopt}" != "${short[$index]}" ]] && {
+					echoError 0 "Invalid switch \`${opt}'."
+					return 1
+				}
+				[[ "${long[$index]}" != "" ]] && sopt="${long[$index]}"								
+				[[ ${#@} -lt ${req[$index]} ]] && {
+					echoError 0 "Missing parameters switch \`${sopt}'."
+					return 1
+				}
+				index=${req[$index]}
+				if [[ $index -eq 0 ]] ; then
+					echo ${sopt}"=true"
+				elif [[ $index -eq 1 ]] ; then
+					echo ${sopt}"=${1}"
+					shift
+					(( count++ ))
+				else
+					echo "${sopt}=${index}"
+					while [[ $index -gt 0 ]] ; do
+						echo "${1}"
+						shift
+						(( index-- ))
+						(( count++ ))
+					done;
+				fi;
+			done
+		else
+			data[${#data[@]}]="${line}";
+		fi;
+	done
+	
+	echo "${term}=$count,${#data[@]}"
+	index=0
+	while [[ $index -lt ${#data[@]} ]] ; do
+		echo "${data[$index]}"
+		(( index++ ))
+	done
+	return 0
+}
+
+

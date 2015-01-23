@@ -1,0 +1,216 @@
+#!/bin/sh
+
+# String utilities.
+
+requireOnce pipes
+
+# Convert strings from parameters or standard input to uppercase.
+# @return text to standard output
+function caseUpper 
+{
+	local line
+	local outline
+	local charpos
+	local char
+	local pos
+	pipeOrParam "$@" | while IFS='' read -r line ; do
+		outline=""
+		charpos=0
+		while [[ $charpos -lt ${#line} ]] ; do
+			char="${line:$charpos:1}"
+			pos="${LOWERCASE_CHARS%%$char*}"
+			[[ ${#pos} -lt ${#LOWERCASE_CHARS} ]] && \
+				[[ "$char" = "${LOWERCASE_CHARS:$(( ${#pos}  )):1}" ]] && \
+				char="${UPPERCASE_CHARS:$(( ${#pos}  )):1}"
+			outline="${outline}${char}"
+			(( charpos++ ))
+		done;
+		echo "$outline"
+	done
+}
+
+# Convert strings from parameters or standard input to lowercase.
+# @return text to standard output
+function caseLower
+{
+	local line
+	local outline
+	local charpos
+	local char
+	local pos
+	pipeOrParam "$@" | while IFS='' read -r line ; do
+		outline=""
+		charpos=0
+		while [[ $charpos -lt ${#line} ]] ; do
+			char="${line:$charpos:1}"
+			pos="${UPPERCASE_CHARS%%$char*}"
+			[[ ${#pos} -lt ${#UPPERCASE_CHARS} ]] && \
+				[[ "$char" = "${UPPERCASE_CHARS:$(( ${#pos}  )):1}" ]] && \
+				char="${LOWERCASE_CHARS:$(( ${#pos}  )):1}"
+			outline="${outline}${char}"
+			(( charpos++ ))
+		done;
+		echo "$outline"
+	done
+}
+
+# Convert only the first character of each work in strings from parameters or 
+# standard input to uppercase.
+# @return text to standard output
+function caseCaps
+{
+	local line
+	local outline
+	local charpos
+	local char
+	local pos
+	local flag
+	pipeOrParam "$@" | while IFS='' read -r line ; do
+		outline=""
+		charpos=0
+		flag=true
+		while [[ $charpos -lt ${#line} ]] ; do
+			char="${line:$charpos:1}"
+			pos="${LOWERCASE_CHARS%%$char*}"
+			if [[ ${#pos} -lt ${#LOWERCASE_CHARS} ]] ; then
+				if [[ $flag ]] ; then
+					char="${UPPERCASE_CHARS:$(( ${#pos}  )):1}"
+					flag=
+				fi;
+			else
+				pos="${UPPERCASE_CHARS%%$char*}"
+				[[ ${#pos} -eq ${#UPPERCASE_CHARS} ]] && flag=true || flag=
+			fi;
+			outline="${outline}${char}"
+			(( charpos++ ))
+		done;
+		echo "$outline"
+	done
+}
+
+# Left pad strings with characters, $1 minimum length, $2 is character to pad with
+# either redirected data or $3, $4... are lines to pad.
+# @return text to standard output
+function padLeftStr
+{
+	local size=$1
+	shift
+	local char="${1}"
+	shift
+	local line
+	pipeOrParam "$@" | while IFS='' read -r line ; do	
+		local count=$(( ${#line} )) # + ${#char} ))	
+		while [[ $count -lt $size ]] ; do
+			(( count++ ))
+			line="${char}${line}"
+		done;
+		echo "$line"
+	done
+}
+
+# Left pad strings with spaces, $1 minimum length,
+# either redirected data or $2, $3... are lines to pad.
+# @return text to standard output
+function padLeft
+{
+	local size=$1
+	shift
+	padLeftStr "$size" " " "$@"
+}
+
+# Right pad strings with characters, $1 minimum length, $2 is character to pad with
+# either redirected data or $3, $4... are lines to pad.
+# @return text to standard output
+function padRightStr
+{
+	local size=$1
+	shift
+	local char="${1}"
+	shift
+	local line
+	pipeOrParam "$@" | while IFS='' read -r line ; do	
+		local count=$(( ${#line} )) # + ${#char}))	
+		while [[ $count -lt $size ]] ; do
+			(( count++ ))
+			line="${line}${char}"
+		done;
+		echo "$line"
+	done
+}
+
+# Right pad strings with spaces, $1 minimum length,
+# either redirected data or $2, $3... are lines to pad.
+# @return text to standard output
+function padRight
+{
+	local size=$1
+	shift
+	padRightStr "$size" " " "$@" 
+}
+
+# remove all preceding occurrences of $1 from $2, $3... or pipe strings 
+# @return text to standard output
+function trimLeft
+{
+	local char="${1}"
+	shift
+	pipeOrParam "$@" | while IFS='' read -r line ; do	
+		while [[ "${line:0:${#char}}" = "$char"  ]] ; do
+			line="${line:${#char}}"
+		done;
+		echo "$line"
+	done
+}
+
+# remove all preceding occurrences of $1 from $2, $3... or pipe strings 
+# @return text to standard output
+function trimRight
+{
+	local char="${1}"
+	local line
+	shift
+	pipeOrParam "$@" | while IFS='' read -r line ; do	
+		while [[ "${line:(-${#char})}" = "$char"  ]] ; do
+			line="${line:0:$(( ${#line} -${#char}))}"
+		done;
+		echo "$line"
+	done
+}
+
+# Pad Number Strings with 0 to fixed lengths. 
+# @param string $1 minimum length. If $1 is a whole number, then the input number is 
+# padded until its length at least $1 characters wide. If $1 is a real number (like 2.5),
+# then each part of the number is padded for that length
+# @param string $2, $3... are lines to pad. (or read from standard input)
+# @return text to standard output
+#
+# example: pipeMultiLine "3.14" "11" "0" ".2" "19.5" | padZero 10
+#
+# example: pipeMultiLine "3.14" "11" "0" ".2" "19.5" | padZero 2.5
+#
+# example: pipeMultiLine "3.14" "11" "0" ".2" "19.5" | padZero 1.0
+#
+# note: All current padding of the type being applied is removed prior to applying the
+# new padding. However using a whole number pad value will not remove padding after a
+# decimal point. 
+function padZero
+{
+	local size=$1
+	shift
+	local line
+	if [[ ${size%%.*} = ${size} ]] ; then
+		trimLeft "0" | padLeftStr "$size" "0" "$@"
+	else
+		local aSize=${size%%.*}
+		local bSize=${size##*.}
+		pipeOrParam "$@" | while IFS='' read -r line ; do
+			local aNum="${line%%.*}"
+			[[ ${aNum} != ${line} ]] && local bNum=${line##*.} || local bNum="0"
+			[[ ${aNum} = "" ]] && local aNum="0"
+			local aNum=$( trimLeft "0" "$aNum" | padLeftStr "$aSize" "0")
+			local bNum=$( trimRight "0" "$bNum" | padRightStr "$bSize" "0")
+			# [[ ${aNum} = "" ]] && local aNum=0
+			[[ ${bNum} != "" ]] && echo "$aNum.$bNum" || echo "$aNum"
+		done
+	fi;
+}

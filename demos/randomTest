@@ -1,0 +1,34 @@
+#!/bin/sh
+
+[[ ${0%/*} = ${0} ]] && tmp=$PWD || tmp=$(cd "${0%/*}"; echo $PWD)
+[[ -f "${tmp%/*}/core" ]] && tmp="${tmp%/*}/core" || tmp="/opt/bssdtk/core"
+. "${tmp}"
+unset tmp
+
+requireOnce debug random
+
+echo Startup Time $(timeElapsed) seconds.
+
+sleep 1
+
+itt=200
+echo Random Number test, ignoring numbers larger than 255.
+while [[ true ]] ; do
+    (( t++ ))
+    ncount=$itt
+    while [[ $ncount -gt 0 ]] ; do
+        num=$(randomNumber 1)
+        [[ ! $num ]] && exit
+        [[ $num -lt 256 ]] && numbers[$num]="$num"
+        (( ncount-- ))
+    done
+    echo ${numbers[*]}
+    while [[ ${numbers[$ncount]} ]] ; do (( ncount++ )); done
+    echo $(timeElapsed)\; Test $t, Contains ${#numbers[@]} filled positions.
+    [[ $ncount -gt 255 ]] && break
+done
+
+echo
+echo Over $(( $t * $itt )) random numbers generated between before all 0-255 were filled.
+echo 
+echo "Total elapsed runtime was $(timeElapsed) second(s)."

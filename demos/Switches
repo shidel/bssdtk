@@ -1,0 +1,20 @@
+#!/bin/sh
+
+# Simple script show some of the Toolkits Global variables
+
+# Include Bash Shell Script Development Toolkit Core Library
+. /opt/bssdtk/core
+
+requireOnce colors switches
+
+setColor Green; echo '*********'; setColor Default
+switchParse - a,b:1 "null,--:2" - -a yes -b no more -- "test this" 3 4 5
+setColor Green; echo '*********'; setColor Default
+switchParse - a,b,,--:2 - -ab 1 2 -- 3 b
+setColor Green; echo '*********'; setColor Default
+switchParse - a,b:1 ,--:0 - -ab 1 2 -- 3
+setColor Green; echo '*********'; setColor Default
+switchParse EOS homer a,alpha,c,d,dee v: b:1 f,flag:2 ferry:3 g,gamma,,delta EOS -abc on --flag one two hello there 
+setColor Green; echo '*********'; setColor Default
+switchParse EOS a,alpha:1 EOS -a alpha there be dragons
+

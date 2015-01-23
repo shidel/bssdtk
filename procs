@@ -1,0 +1,156 @@
+#!/bin/sh
+
+# System process utilities.
+
+registerExternals ps 
+
+# Detect if a program is running in the foreground.
+# @param switch When the -q/--quite switch is used. No text is sent to the standard output device.
+# @param PPID Optional. The process ID of the program to query. If none is provided, then 
+# the script PPID is assumed. 
+# @return exitcode 0 if it is a foreground process, 1 if it is running in background, 2 for error.
+# @return text to standard output yes/no/error.
+# 
+# example: echo "In foreground: $(isProcFore)"
+#
+# example: isProcFore -q || { echo "Not Ok to run in background"; exit 1; }
+# 
+# note: requires ps
+function isProcFore
+{
+	[[ $1 = "quite" || $1 = "-q" || $1 = "--quite" ]] && {
+		local quite=true
+		shift
+	}
+	[[ ${1} ]] && local proc=$1 || local proc=$$
+	case $(ps -o stat= -p ${proc} 2>&1 || echo error) in
+		(*+*) 
+			[[ ! $quite ]] && echo yes
+			return 0;;
+		(error) 
+			[[ ! $quite ]] && echo error
+			return 2		
+			;;
+		(*) 
+			[[ ! $quite ]] && echo no
+			return 1
+	esac
+}
+
+# Detect if a program is running in the background.
+# @param switch When the -q/--quite switch is used. No text is sent to the standard output device.
+# @param PPID Optional. The process ID of the program to query. If none is provided, then 
+# the script PPID is assumed. 
+# @return exitcode 0 if it is a background process, 1 if it is running in foreground, 2 for error.
+# @return text to standard output yes/no/error.
+# 
+# example: echo "In background: $(isProcBack)"
+#
+# example: isProcBack -q && { echo "Not Ok to run in background"; exit 1; }
+# 
+# note: requires ps
+function isProcBack
+{
+	[[ $1 = "quite" || $1 = "-q" || $1 = "--quite" ]] && {
+		local quite=true
+		shift
+	}
+	[[ ${1} ]] && local proc=$1 || local proc=$$
+	case $(ps -o stat= -p ${proc} 2>&1 || echo error) in
+		(*+*) 
+			[[ ! $quite ]] && echo no
+			return 1;;
+		(error) 
+			[[ ! $quite ]] && echo error
+			return 2		
+			;;
+		(*) 
+			[[ ! $quite ]] && echo yes
+			return 0
+	esac
+}
+
+# Detect if a program is running.
+# @param switch When the -q/--quite switch is used. No text is sent to the standard output device.
+# @param PPID Optional. The process ID of the program to query. If none is provided, then 
+# the script PPID is assumed. 
+# @return exitcode 0 if the process exists, 1 if it doesn't.
+# @return text to standard output yes/no.
+# 
+# example: echo "Is Running: $(isProcThere)"
+#
+# example: isProcThere -q || { echo "How can I be missing?"; exit 1; }
+# 
+# note: requires ps
+function isProcThere
+{
+	[[ $1 = "quite" || $1 = "-q" || $1 = "--quite" ]] && {
+		local quite=true
+		shift
+	}
+	[[ ${1} ]] && local proc=$1 || local proc=$$
+	case $(ps -o stat= -p ${proc} 2>&1 || echo error) in
+		(error) 
+			[[ ! $quite ]] && echo no
+			return 1		
+			;;
+		(*) 
+			[[ ! $quite ]] && echo yes
+			return 0
+	esac
+}
+
+# Wait for a process to complete or a key is pressed.
+#
+# @param switch -n, don't echo a new line after completion.
+# @param switch -p, Process PID to wait for. (leave out to just wait for keypress).
+# @param switch -t, Timeout value. How long to wait before just assuming a keypress.
+# (leave out for infinity).
+# @param switch -d, Destroy Process. If the process is still running after timeout or a keypress,
+# then send KILL signal to the process.
+# @param string Text to display as a prompt before waiting.
+# @return undefined
+function waitProc
+{
+	local p=0
+	while [[ $p -ne ${#@} ]] ; do
+		local p=${#@}
+		[[ "${1}" = '-n' ]] && {
+			local no_newline='-n'
+			shift
+		}
+		[[ "${1}" = '-p' ]] && {
+			shift
+			local proc="${1}"
+			shift
+		}
+		[[ "${1}" = '-d' ]] && {
+			local killproc=true
+			shift
+		}
+		[[ "${1}" = '-t' ]] && {
+			shift
+			local tout="${1}"
+			shift
+		}
+	done
+	[[ ${#@} ]] && echoNoBreak $no_newline "${@}"
+	if [[ ${tout} ]] ; then
+		( sleep ${tout} ) &
+		local psleep=$!
+	fi;
+	local keypress
+	while [[ true ]] ; do
+		read -t 1 -n 1 keypress && break
+		if [[ $psleep ]] ; then
+			isProcThere -q $psleep || break
+		fi;
+		if [[ $proc ]] ; then
+			isProcThere -q $proc || break
+		fi;
+	done;
+	if [[ $killproc ]] ; then 
+		isProcThere -q $proc && psleep=$(kill -15 $proc 2>&1 >/dev/null)
+	fi;
+		
+}

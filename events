@@ -1,0 +1,78 @@
+#!/bin/sh
+
+# Script event utilities.
+
+# All events may exist as functions or variables of a function name.
+# We recommend variables so they may be overridden or reassigned during the
+# execution of the script.
+#
+# Excluding OnErrorEvent & OnZeroEvent, the following parameters are passed to these events,
+# $1 Event Name, $2 is Signal Name. 
+# Then either return or exit commands may be used. If a it exits with an error code the 
+# script will be terminated using that code.
+
+# declare OnHangupEvent=  	# Hangup or death of controlling terminal or process
+# declare OnQuitEvent=		# Quit from Keyboard
+# declare OnInterruptEvent= # Keyboard Interrupt 
+# declare OnTerminateEvent= # Terminate Signal
+# declare OnStopEvent=		# Stop process
+# declare OnAlarmEvent=		# Timer signal from alarm
+# declare OnChildEvent= 	# Child process stopped or terminated
+# declare OnContinueEvent=  # Continue process
+# declare OnKillEvent=		# Kill signal
+# declare OnAbortEvent=		# Abort signal
+# declare OnErrorEvent=		# Bash Script Error, $1 is line number in main script
+
+# Event Handler to Ignore signals
+defaultIgnoreEvent() {
+	return 0
+}
+
+# Internal Function, Process an event.
+OnEvent_Handler() {
+	local name=${1}
+	shift
+	local event="On${name}Event"
+	local class=$(type -t "${event}" 2>&1)
+	if [[ "${class}" != "function" ]] ; then
+		[[ $(type -t "${!event}" 2>&1) ]] && class="variable" || class="undefined"
+	fi;
+	# if it is not defined, then preform the default behavior
+	if [[ "${class}" = "undefined" ]] ; then
+		case "${name}" in
+			("User1" | "User2" | "Stop" | "Continue" | "Child") return 0;;
+			("Exit") return;;
+			(*) exit 1;;
+		esac;
+	fi;
+	
+	# Call either the function or function named by the variable
+	if [[ "${class}" = "variable" ]] ; then
+		"${!event}" "$name" "$@"
+	else
+		"${event}" "$name" "$@"
+	fi;
+	# A non-zero result will terminate the script 		
+	local RET=$?
+	[[ ${RET} != 0 ]] && exit ${RET}
+	return 0
+}
+
+# Set default to ignore errors, any function that returns non zero is an error.
+OnErrorEvent="defaultIgnoreEvent"
+
+# Trap Standard events to Event Handler
+trap "OnEvent_Handler Hangup HUP"			HUP
+trap "OnEvent_Handler Quit QUIT"			QUIT
+trap "OnEvent_Handler Interrupt INT" 		INT
+trap "OnEvent_Handler Terminate TERM"		TERM
+trap "OnEvent_Handler Stop STOP"			STOP
+trap "OnEvent_Handler Continue CONT"		CONT
+trap "OnEvent_Handler Alarm ALRM"			ALRM
+trap "OnEvent_Handler Child CHLD"			CHLD
+trap "OnEvent_Handler Kill KILL"			KILL
+trap "OnEvent_Handler Abort ABORT"			ABRT
+trap "OnEvent_Handler User1 USR1" 			USR1
+trap "OnEvent_Handler User2 USR2" 			USR2
+
+trap 'OnEvent_Handler Error ERR ${LINENO}' 	ERR 

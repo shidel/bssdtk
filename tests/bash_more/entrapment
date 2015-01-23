@@ -1,0 +1,29 @@
+#!/bin/sh
+
+A=$(sh "${0%/*}/bash_more/trappings" 0)
+
+shtest "${A}" 	"Goodbye" 			"Failed to trap exit"
+shcheck
+
+
+test_kill() {
+	spawn="${0%/*}/bash_more/trappings"
+	sh $spawn 1 &
+	A=$!
+	sleep 1
+	kill -s TERM $A
+	sleep 1
+	B=$(echo $(ps ax | grep $spawn | grep -v grep | grep $A) | cut -d " " -f 1)
+	sleep 1
+	kill -s ABRT $A
+	sleep 1
+	C=$(ps ax | grep $spawn | grep -v grep | grep $A)
+}
+
+test_kill
+shtest "${A}" 	"${B}" 		"Failed to trap TERM signal"
+shcheck
+shtest "${C}" 	"" 			"Failed to trap ABRT signal"
+shcheck
+
+

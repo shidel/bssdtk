@@ -1,0 +1,32 @@
+#!/bin/sh
+
+# Demonstration of adding exit event code
+
+# Include Bash Shell Script Development Toolkit Core Library
+. /opt/bssdtk/core
+
+# This is an Exit Event
+first() {
+	echo Ending script with code $@
+	return 0
+}
+
+# This is also an Exit Event
+second() {
+	echo Goodbye, I\'ll miss you.
+	# Return codes are Ignored in Exit Events
+	return 1 						
+}
+
+# register the Exit Events
+registerOnExitEvent first second
+
+# Do some stuff
+echo Hello my friend.
+echo
+
+# Exit the script. 
+# The Exit Events will be processed in reverse order.
+# Uncomment to exit with an error code.
+
+# exit 1

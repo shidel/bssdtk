@@ -1,0 +1,262 @@
+#!/bin/sh
+
+# Standard I/O pipe utilities.
+
+# Test if standard pipes are being redirected. When not tested, assumed they are.
+[[ ${USE_PIPE_TEST} ]] || USE_PIPE_TEST=true
+
+# Choose items/lines from standard input for the function or from parameters.
+#
+# This function is mostly used internally to provide other functions to operate by using
+# either parameters or the standard input for their function. 
+#
+# @param string Multiple strings to use instead of standard input. Provide no parameters
+# to use items/lines from the standard input instead.
+# @return text Sent to standard output
+function pipeOrParam
+{
+	if [[ ${#@} -ne 0 ]] ; then
+		while [[ ${#@} -ne 0 ]] ; do
+			echo "${1}"
+			shift
+		done
+	else
+		[[ ${USE_PIPE_TEST} != "true" || ! -t 0 ]] && while IFS='' read -r line ; do
+			echo "$line"
+		done
+	fi;
+}
+
+# Add items/lines to the end of a pipe stream. 
+#
+# @param string Multiple strings to append onto the standard output.
+# @return text Sent to standard output
+#
+# example: echo "Hello" | pipeAppend "there" 
+function pipeAppend
+{
+	[[ ${USE_PIPE_TEST} != "true" || ! -t 0 ]] && while read -r line ; do
+		echo "$line"
+	done
+	while [[ ${#@} -ne 0 ]] ; do
+		echo "${1}"
+		shift
+	done
+}
+
+# Add items/lines to the beginning of a pipe stream. 
+#
+# @param string Multiple strings to prepend onto the standard output before the data
+# that is already in the standard input pipe is sent.
+# @return text Sent to standard output
+#
+# example: echo "there" | pipePrepend "Hello"
+function pipePrepend
+{
+	while [[ ${#@} -ne 0 ]] ; do
+		echo "${1}"
+		shift
+	done
+	[[ ${USE_PIPE_TEST} != "true" || ! -t 0 ]] && while IFS='' read -r line ; do
+		echo "$line"
+	done
+}
+
+# Perform an action on each item/line in a pipe stream.
+#
+# @Param string The first param is the name of a command to perform.
+# @param string All remaining params are options for the command and they
+# are not required.
+# @return undefined
+#
+# example: ls -1 * | pipeForEach echo "Item: "
+function pipeForEach
+{
+	local fname="${1}"
+	shift
+	local line
+	[[ ${USE_PIPE_TEST} != "true" || ! -t 0 ]] && while IFS='' read -r line ; do
+		"${fname}" "${@}" "${line}"			
+	done
+}
+
+# Displays each parameter or line from a pipe on its own line
+#
+# example: echo "${INCLUDED__FILES[@]}" | pipeMultiLine
+#
+# example: pipeMultiLine "${INCLUDED__FILES[@]}"
+function pipeMultiLine
+{
+	pipeOrParam "$@"
+}
+
+# Combines each parameter or line from pipe into a single line.
+# @param string separator character/string. If it is not provided, space is assumed.
+#
+# example: echo "${INCLUDED__FILES[@]}" | pipeOneLine ":"
+#
+# example: pipeOneLine ":" "${INCLUDED__FILES[@]}"
+function pipeOneLine
+{
+	if [[ $# -eq 0 ]] ; then
+		local char=" "
+	else
+		local char="${1}"
+		shift
+	fi;
+	local outflag
+	local outline
+	pipeOrParam "$@" | while IFS='' read -r line ; do
+		[[ ${outflag} ]] && outline="${outline}${char}"
+		local outflag=true
+		outline="${outline}${line}"
+	done
+	echo "${outline}"
+}
+
+# Combines each parameter or line from pipe into a single line.
+# note: This is simply the pipeOneLine function under a different name and is only
+# provided to provide a naming similarity with the pipeExplode function.
+function pipeImplode
+{
+	pipeOneLine "${@}"
+}
+
+# Separate a pipe into multiple lines. 
+#
+# @param switch -n Ignore current lines and only output new lines at each separator. Must include 
+# a joining option. usually space or no-space: -n " " or -n "" 
+# @param switch -k Do not discard the separator character/string and output it.
+# @param string separator character/string. If it is not provided, space is assumed.
+# @return text to standard output.
+#
+# example: echo "$PATH" | pipeExplode ':'
+#
+# example: echo "${1}" "${2}" | pipeExplode -n " " -k ','
+#
+# example: echo "${1}" "${2}" | pipeExplode -n " " '|'
+function pipeExplode
+{
+	local opt_n opt_k opt_s opt_j line
+	if [[ ${1} = "-"[nk] ]] ; then
+		eval opt_${1:1}=true
+		[[ ${1} = "-n" ]] && {
+			shift
+			opt_j="${1}"
+		}
+		shift
+	fi;
+	if [[ ${1} = "-"[nk] ]] ; then
+		eval opt_${1:1}=true
+		[[ ${1} = "-n" ]] && {
+			shift
+			opt_j="${1}"
+		}
+		shift
+	fi;
+	opt_s=${1}
+	shift
+	[[ ${opt_s} = "" ]] && echoError 1 "Invalid usage of pipeExplode function."\
+		"Missing separator parameter."
+	echo "$opt_n/$opt_k"
+	pipeOrParam "$@" | ( 
+		while IFS='' read -r line ; do
+			[[ ${#grow} -eq 0 ]] && local grow="${line}" || local grow="${grow}${opt_j}${line}"
+			local pos="${grow%%${opt_s}*}"
+			while [[ ${#pos} -ne ${#grow} ]] ; do
+				[[ ${opt_k} ]] && echo "${grow:0:${#pos}}${opt_s}" || echo "${grow:0:${#pos}}"
+				grow="${grow:$(( ${#pos} + ${#opt_s}))}"
+				local pos="${grow%%${opt_s}*}"
+			done
+		
+			if [[ ${opt_n} ]] ; then
+				echo -n
+			else
+				echo "${grow}"
+				grow=""
+			fi;
+			# echo ${#pos},${#line}=${line}
+		done
+		[[ ${#grow} -ne 0 ]] && echo "${grow}"
+	)
+}
+
+# Show only specified items/lines from pipe.
+#
+# @param integer $1 is start line number. negative numbers are calculated from last line in
+# the pipe.
+# @param integer $2 is the total number of lines to display.
+# @return text to standard output
+#
+# example: cat "file.txt" | pipeOnlyLines 1 1 
+#
+# example: cat "file.txt" | pipeOnlyLines -10 10
+function pipeOnlyLines
+{
+	local first=$1
+	shift
+	[[ $first = "" ]] && local first=1
+	local total=$1
+	shift
+	[[ $total = "" ]] && local total=1
+	local outflag
+	local outlines
+	local count=0
+	if [[ ${first:0:1} = "-" ]] ; then
+		pipeOrParam "$@" | ( 
+			while IFS='' read -r line ; do
+				local outlines[${count}]="${line}"
+				(( count++ ))
+			done			
+			local first=$(( $count + $first ))
+			local total=$(( $first + $total ))
+			[[ $total -gt $count ]] && local total=$count
+			count=$first
+			while [[ $count -lt $total ]] ; do
+				echo "${outlines[${count}]}"
+				(( count++ ))
+			done
+		)
+	else
+		pipeOrParam "$@" | ( 
+			while IFS='' read -r line ; do
+				[[ $first -gt $count ]] || outflag=true
+				[[ $(( $first + $total )) -gt $count ]] || break
+				[[ ${outflag} ]] && echo "${line}"
+				(( count++ ))
+			done
+			while IFS='' read -r line ; do
+				count=$count
+			done
+		)
+	fi;
+}
+
+# Dumps any remaining pipe data to null device to prevent broken pipe errors when a
+# function is to abort mid-pipe.
+function pipeDump 
+{
+	registerExternals cat
+	cat ->/dev/null
+}
+
+# Branch a pipe into both standard output and standard error output.
+#
+# @param string Multiple strings to use instead of standard input. Provide no parameters
+# to use items/lines from the standard input instead.
+# @return text Sent to standard output
+function pipeBranch
+{
+	if [[ ${#@} -ne 0 ]] ; then
+		while [[ ${#@} -ne 0 ]] ; do
+			echo "${1}"
+			echo "${1}">&2
+			shift
+		done
+	else
+		[[ ${USE_PIPE_TEST} != "true" || ! -t 0 ]] && while IFS='' read -r line ; do
+			echo "${line}"
+			echo "${line}">&2
+		done
+	fi;
+}

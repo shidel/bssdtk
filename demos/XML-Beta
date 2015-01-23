@@ -1,0 +1,37 @@
+#!/bin/sh
+
+# Note the XML library is still under development and is not ready for use.
+
+# Include Bash Shell Script Development Toolkit Core Library
+. /opt/bssdtk/core
+
+requireOnce colors xml pipes strings debug procs sound
+
+echo Startup Time $(timeElapsed) seconds.
+
+MAXIMUM_XML_PARSE=50
+
+
+xmliTunes () {
+	# ${1} is result of xml parser
+	[[ ${1} = 1 ]] && {
+		echoError 0 "Not processing iTunes library XML data due to Errors."
+		return 0
+	}
+	[[ ${1} = 2 ]] && { 
+		local proc=$( say -b 'What? A partially parsed iTunes library... Awe! Foo-e... Lets check it out anyway.' ) 
+		echo
+		waitProc -d -t 30 -p $proc -n "Press a key to continue."
+		echo
+	}
+	
+	echo Dev system pause.
+	read -n 1 line
+	return 0
+}
+
+timeMark
+time xmlParse xmliTunes "plist,dict,key" "${HOME}/Music/iTunes/iTunes Music Library.xml"
+echo
+echo "Parsed XML file in $(timeElapsed) seconds."
+echo "Total execution time of $(timeElapsed -s) seconds."

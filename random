@@ -1,0 +1,80 @@
+#!/bin/sh
+
+# Sub-shell safe random number generation utilities. They are not fast, but unlike the
+# built in random number generator, are not prone to return repeating sets of random
+# numbers inside sub-shells with very complex scripts. However, unlike the builtin
+# $RANDOM variable/function these cannot be seeded to return a given set of random 
+# numbers.
+
+registerExternals dd || echoError 1\
+ "Internal error: Unable to local required external programs."
+ 
+if [[ -e /dev/urandom ]] ; then
+	RANDOM_DEVICE=/dev/urandom
+elif [[ -e /dev/random ]] ; then
+	RANDOM_DEVICE=/dev/random
+else
+	echoError 1 "Internal error: Unable to local system random device."
+fi;
+
+# This random number generator uses the systems random number generator and does not 
+# use the internal bash random number generator. It is safe to use inside and outside 
+# of sub-shells and each call will result in a new random number. 
+# @param integer Byte size of the random number 1=0-255, 2=0-65535 ... 7=really big.
+# @return text of random number to standard output device.
+#
+# note: Although this uses the systems random number generator, it should not be considered
+# secure for cryptographic purposes.
+function randomNumber () {
+    local size=$1
+    [[ $size -lt 1 ]] && size=1
+    [[ $size -gt 7 ]] && size=7
+    local pos=0
+    local val=0
+    while [[ $pos -lt $size ]] ; do 
+        local c="$(dd count=1 bs=1 if=$RANDOM_DEVICE 2>/dev/null)"
+        # don't know if it is bash or dd, but values that generate 0 or 10 result in a null string
+        if [[ "$c" != "" ]] ; then
+            local x=$(builtin printf '%d\n' "'${c}")
+        else
+            # if string is null, pick zero or 10 at random, here null is 0, <0 is 10 and >0 is 0
+            local c="$(dd count=1 bs=1 if=$RANDOM_DEVICE 2>/dev/null)"
+            local x=$(builtin printf '%d\n' "'${c}")
+            [[ $x -lt 0 ]] && x=10 || x=0
+        fi;
+        local x=$(( 127 - $x ))
+        [[ -nz $val ]] && local val=$(( $val * 256 + $x )) || local val=$x
+        (( pos++ ))
+    done
+    builtin printf "${val}\n"
+}
+
+# Simple function that uses the randomNumber function to return a value between 0 and 255.
+# @return text value to standard output device 
+function randomByte () {
+	randomNumber 1
+}
+
+# Simple function that uses the randomNumber function to return a value between 0 and 65535.
+# @return text value to standard output device 
+function randomWord () {
+	randomNumber 2
+}
+
+# Simple function that will return a random characters.
+# @param integer Number of random characters to return.
+# @param string Character set to use (limited to 256 characters).
+# If none is provided, the default ascii character set 
+# made from upper & lower case letters and numbers is used.
+# @return char random character to standard output device.
+function randomChars () {
+	local count="$1"
+	local charset="$2"
+	[[ ! $charset ]] && charset="${UPPERCASE_CHARS}${LOWERCASE_CHARS}${NUMBER_CHARS}"
+	local outstr='';
+	while [[ $count -gt 0 ]] ; do
+		(( count-- ))
+		outstr="${outstr}${charset:$(( $(randomNumber 1) % ${#charset} )):1}"
+	done;
+	echo "${outstr}"
+}

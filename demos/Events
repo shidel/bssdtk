@@ -1,0 +1,52 @@
+#!/bin/sh
+
+# Simple script to Ignore Control+C keyboard input.
+
+# Include Bash Shell Script Development Toolkit Core Library
+. /opt/bssdtk/core
+
+requireOnce events
+
+count=5
+
+# Snarky Control+C Messages
+No_Control_C() {
+	(( count-- ))
+	echo 
+	case $count in
+		0)  echo "Fine! Goodbye!"
+			echo "Nobody wants me around anymore!"
+			return 1
+			;;
+		1) 	echo "I mean it! You press Control+C one more time!"
+			;;
+		2)  echo "I am warning you! Stop it!"
+			;;
+		3)  echo "Hey! Knock that off!"
+			;;
+		4)  echo "What? Was that a Control+C?"
+			;;
+		*)
+			echo "I'm not listening to you."
+	esac;
+	return 0
+}
+
+# Prevent Control+C from terminating script
+OnInterruptEvent="No_Control_C"
+
+# We are also going to ignore these signals as well
+OnTerminateEvent="defaultIgnoreEvent"
+OnQuitEvent="defaultIgnoreEvent"
+OnAbortEvent="defaultIgnoreEvent"
+# by default OnErrorEvent="defaultIgnoreEvent"
+
+# Lets notify the users of Control+C lockout
+echo "You must press Control+C, $count times to exit this program."
+echo 
+echo "Leave me alone I am Sleeping."
+
+# Lets get stuck in an infinite loop.
+while true; do
+	sleep 1
+done;

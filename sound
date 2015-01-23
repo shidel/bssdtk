@@ -1,0 +1,181 @@
+#!/bin/sh
+
+# Basic sound support utilities.
+
+registerExternals tput say grep
+# registerOverrides say
+
+[[ ${OS_X} ]] && registerExternals afplay
+
+[[ ! ${SPEAK_ERRORS} ]] && SPEAK_ERRORS=true
+
+# Beep internal speaker.
+function beep
+{
+	[[ ${EXTERNAL__tput} ]] && tput bel
+}
+
+# Function to generate text to speech. Currently only OS X computers are supported for
+# speech. Others will beep once. 
+#
+# @param switch -b Dont wait. Instead spawn as a background process and return PID
+# of that process as text to the standard output device.
+# @param switch -v Override default $VOICE value.
+# @param string Multiple switches or strings to send to the text to speech engine.
+# @return text PID of background process
+# @return exitcode 0 if sucessful speech or beep is/was played. 
+function say {
+	local voice="$VOICE"
+	while [[ ${#@} -ne 0 ]] ; do
+		case "${1}" in 
+			(-b)  
+				local spawn="-b"
+				shift
+				;;
+			(-v) 
+				shift
+				local voice="$1"
+				shift
+				;;
+			(*)
+			break		
+		esac
+	done;
+	
+	if [[ $spawn = "-b" ]] ; then
+		if [[ ${OS_X} ]] && [[ ${EXTERNAL__say} ]] ; then 
+			if [[ $voice ]] ; then
+				${EXTERNAL__say} -v "$voice" -- "$@" >/dev/null &
+			else
+				${EXTERNAL__say} -- "$@" >/dev/null &
+			fi;
+			[[ $? = 0 ]] && echo $! || return 1
+		elif [[ ${EXTERNAL__tput} ]] ; then
+			( tput bel; sleep 1; ) &
+			[[ $? = 0 ]] && echo $! || return 1
+		else 
+			return 1
+		fi
+	else
+		if [[ ${OS_X} ]] && [[ ${EXTERNAL__say} ]] ; then 
+			if [[ $voice ]] ; then
+				${EXTERNAL__say} -v "$voice" -- "$@" >/dev/null
+			else
+				${EXTERNAL__say} -- "$@" >/dev/null
+			fi;
+			local ret=$?
+			return $ret
+		elif [[ ${EXTERNAL__tput} ]] ; then
+			tput bel
+			sleep 1
+		else 
+			return 1
+		fi
+	fi
+	return 0
+}
+
+# Simple function to echo text using echoNoBreak and also send text to the say function. 
+# If the text to speech system is not present, no audio is output.
+# 
+# note: Since this function is closely related to both the echo and say functions, 
+# it can also be called using echoSay.
+function sayEcho
+{
+	[[ "${1}" = "-n" ]] && {
+		local nocr="-n"
+		shift
+	}
+	if [[ ${#@} -ne 0 ]] ; then
+		while [[ ${#@} -ne 0 ]] ; do
+			echoNoBreak -n "${1}"
+			[[ ${EXTERNAL__say} ]] && say "${1}" 
+			shift
+		done
+		[[ ! ${nocr} ]] && echoNoBreak
+	else
+		[[ ${USE_PIPE_TEST} != "true" || ! -t 0 ]] && while IFS='' read -r line ; do
+			echoNoBreak ${nocr} "${line}"
+			[[ ${EXTERNAL__say} ]] && say "${line}"
+		done
+	fi;
+}
+
+echoSay () {
+	sayEcho "$@"
+}
+
+# Simple function to return and/or demonstrate system speech voices.
+# 
+# @param switch -l Print list of voices.
+# @param switch -n Say voice names aloud using default $VOICE.
+# @param switch -s Speak demo text for each voice.
+# @param switch -f filter results with string using grep.
+#
+# @return varied
+# 
+# example: sayVoices -s -f "en_"
+function sayVoices {
+	[[ ! ${OS_X} ]] && return 0
+	while [[ ${#@} -ne 0 ]] ; do
+		case "$1" in
+			(-l) local display=true;;
+			(-n) local aloud=true;;
+			(-s) local vocalize=true;;
+			(-f) shift; slang="$1";;
+			(*) echo "error: bad switch"; return 1;
+		esac;
+		shift
+	done
+	local voices=""
+	local voice=""
+	local comment=""
+	local lang=""
+	[[ $slang ]] || local slang="#"
+	
+	while read voice ; do 		
+		[[ "$voice" != "" ]] && {
+			voice=${voice/	/ }
+			comment="${voice#*'#'}"
+			voice=$(echo ${voice:0:$(( ${#voice} - ${#comment}  - 1))})
+			lang="${voice##' '*}"			
+			voice="${voice%' '*}"
+			voice=$(echo $voice)
+			comment=$( echo $comment )
+			# [[ "$voices" != "" ]] && voices="${voices}, "			
+			# voices="${voices}${voice}"
+			[[ $display ]] && echo -n "${voices}${voice}"
+			voices=", "
+			if [[ $aloud ]] ; then # || [[ "${comment/$voice/}" = "$comment" ]] ; then
+				 ${EXTERNAL__say} "Voice $voice"
+			fi;
+			# echo ${EXTERNAL__say} -v "${voice}" ". ${comment}"
+			
+			[[ $vocalize ]] && ${EXTERNAL__say} -v "${voice}" -- ${comment} >/dev/null
+		}
+	done<<<"$(${EXTERNAL__say} -v ? | grep ${slang})"
+	# [[ $display ]] && echo "${voices}"	
+	[[ $display ]] && [[ $voices != '' ]] && echo
+}
+
+# Simple function to choose the default voice used in the script on Mac OS.
+#
+# @param array Array of voices in order of preference.
+# @return nothing But, assigns the global variable $VOICE to first available in the list.
+# 
+# example: sayPickVoice (David "Cepstral Millie" Karen Alex)
+#
+# note: This function is automatically called using the global array $VOICE_PREFERENCE at
+# startup of the sound library.
+function sayVoicePick () {
+	[[ ! ${OS_X} ]] && return
+	VOICE=""
+	while [[ ${#@} -ne 0 ]] ; do
+		( command say -v "$1" ? 2>&1 ) >/dev/null && VOICE="$1"
+		[[ $VOICE ]] && break
+		shift
+	done;
+}
+
+[[ ! $VOICE_PREFERENCE ]] && VOICE_PREFERENCE=(Karen Serena Emily Tessa Moira Sangeeta Samantha Daniel Lee Tom Alex)
+[[ ! $VOICE ]] && sayVoicePick "${VOICE_PREFERENCE[@]}"

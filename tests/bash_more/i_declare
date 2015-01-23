@@ -1,0 +1,65 @@
+#!/bin/sh
+# Declare testing sub-script
+
+check_readonly() {
+	declare -r ERR1="Hello"			# Set A as Hello and readonly
+	ERR1="Hi"
+}
+
+fail_to_unset() {
+	declare -r ERR2="Hype"
+	unset ERR2
+	[[ $ERR2 != "" ]] && echo readonly
+}
+
+# check declared readonly
+B=$(check_readonly 2>&1)
+[[ "${B}" != "${B##*readonly}" ]] && B=ok || B=failed
+shtest "${B}" 	"ok" 		"have declare set a variable as read only"
+shcheck
+
+# check declared readonly fails to unset
+B=$(fail_to_unset 2>&1)
+[[ "${B}" != "${B##*readonly}" ]] && B=ok || B=failed
+shtest "${B}" 	"ok" 		"have declare fail to unset a read only variable"
+shcheck
+
+# Test declared as Integer
+declare -i A=10
+shtest "${A}" 	"10" 		"have declare set a variable as integer"
+shcheck
+
+A=13
+shtest "${A}" 	"13" 		"allow declare change a variable as integer"
+shcheck
+
+A=Hope
+shtest "${A}" 	"0" 		"prevent a variable declares as integer to be set with string"
+shcheck
+
+declare -x TEST_EX_VAR="Hope this works"
+
+B=$(sh "${0%/*}/bash_more/extraterrestrial")
+shtest "${B}" 	"${TEST_EX_VAR}"  "export a variable declared for export"
+shcheck
+unset TEST_EX_VAR
+
+# Mac Incompatible Declare Statemets
+# declare -u Uppercase
+# declare -l Uppercase
+# and a bunch of others
+
+unset A
+unset B 
+
+# Local variable
+set_a_local() {
+	local A="Help"
+	shtest "${A}" 	"Help"  "set a variable using local"
+	shcheck
+}
+
+set_a_local
+
+shtest "${A}" 	""  "set a localized variable"
+shcheck

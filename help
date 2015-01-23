@@ -1,0 +1,300 @@
+#!/bin/sh
+
+# Integrated help system.
+#
+# I wasn't exactly sure how I was going to implement an integrated help system. So,
+# this library is a little kludgy and will probably be completely reworked at a future 
+# date.  However, it is functional and its basic usage will probably remain unchanged.
+
+requireOnce pipes strings colors
+
+# Display help formatted comments.
+#
+# @param integer (required) Indentation for each line.
+# @param string (required) Name of default text color.
+# @param strings Text to format and display.
+# @return text to standard output
+function helpComments
+{
+local j
+local width
+local key
+local indent=$1
+shift
+local color=$1
+shift
+setColor $color
+for j in "${@}" ; do
+	echo -n "$(padLeft ${indent} '' )"
+	local width=$indent
+	if [[ "${j:0:1}" = "@" ]] ; then
+		setColor Dark_Gray
+		echo -n "@"
+		j="${j:1}"
+		local key=$( caseLower "${j%%' '*}" )
+		width=$(( $width + 1 + ${#key} ))
+		j="${j:$((${#key} + 1))}"
+		if [[ "${key}" = "param" ]] ; then
+			setColor Light_Green
+		elif [[ "${key}" = "return" ]] ; then
+			setColor Light_Cyan
+		else
+			setColor Light_Magenta										
+		fi;
+		echo -n $key' '
+		setColor Light_Yellow
+		local key="${j%%' '*}"
+		width=$(( $width + 1 + ${#key} ))
+		j="${j:$((${#key} + 1))}"
+		echo -n $key' '
+		setColor $color
+	fi;
+	local key=$(caseLower "${j%%' '*}")
+	case "$key" in 
+		("example:") 
+			setColor Dark_Gray
+			echo -n $(caseUpper $key)' '
+			width=$(( $width + 1 + ${#key} ))
+			j="${j:$((${#key} + 1))}"
+		;;
+		("warning:") 
+			setColor Light_Red
+			echo -n $(caseUpper $key)' '
+			width=$(( $width + 1 + ${#key} ))
+			j="${j:$((${#key} + 1))}"
+		;;
+		("note:") 
+			setColor Light_Cyan
+			echo -n $(caseUpper $key)' '
+			width=$(( $width + 1 + ${#key} ))
+			j="${j:$((${#key} + 1))}"
+		;;
+	esac;
+	setColor $color
+	while [[ $(( $width + ${#j} )) -gt $(( $COLUMNS - 1 )) ]] ; do
+		local t="${j:0:$(( $COLUMNS - ${width} ))}"
+		
+		# echo "+$t+"
+		local t="${t%' '*}"
+		echo "${t}"
+			
+		j=${j:$(( ${#t} + 1 )) }
+		if [[ "${j}" != '' ]] ; then 
+			echo -n "$(padLeft ${indent} '' )"
+			local width=$indent
+		fi;
+	done;
+	echo "${j}"
+done
+setColor Default
+}
+
+# Show help for a given BSSDTK script or utility.
+#
+# @param filename (required) Filename to use for help.
+# @param command (required) main, list, overview, search [search term] or all.
+function helpShow
+{
+	local flib="$1"
+	shift
+	local fname
+	local line
+	local shown=false
+	local flag=0
+	local comments=()
+	local mode="$1"
+	local main=()
+	[[ "$mode" = "" ]] && local mode=list
+	[[ "$mode" = "overview" ]] && { 
+		local mode=list
+		local plus=true
+	}
+	shift
+	[[ "$1" != "" ]] && local search=$(caseLower "${1}")
+	shift	
+	while read line ; do
+		line=$line
+		case $flag in
+			(0)
+				[[ "${line:0:3}" != "#!/" ]] && break 
+				flag=1
+			;;
+			(1) 
+				if [[ "${line:0:1}" = "#" ]] ; then
+					line=${line:1}
+					while [[ "${line:0:1}" = "#" ]] ; do
+						line=${line:1}						
+						comments[${#comments[@]}]=""
+					done
+					[[ "${line:0:1}" = " " ]] && line=${line:1}
+					line=${line//	/  }		
+					# if [[ "${line:0:1}" = " " ]] ; then
+					#	line=${line:1}						
+					#	comments[${#comments[@]}]=$line
+					# fi;
+					if [[ "${line}" = "" ]]; then 
+						line=${line:1}						
+						comments[${#comments[@]}]=$line
+						line=${line:1}						
+						comments[${#comments[@]}]=$line
+					elif [[ "${line:0:1}" = " " ]] ; then 
+						line=${line:1}						
+						comments[${#comments[@]}]=$line
+					elif [[ "${line:0:1}" = "@" ]] ; then 
+						local lastln=$((${#comments[@]} - 1))
+						[[ $lastln -lt 0 ]] && lastln=0
+						if [[ ${comments[$lastln]} != "" ]] ; then
+							if [[ ${comments[$lastln]:0:1} != "@" ]] ; then
+								comments[${#comments[@]}]=""
+								(( lastln++ ))
+							fi;								
+							(( lastln++ ))
+						fi;
+						[[ ${#comments[${lastln}]} -gt 0 ]] && comments[${lastln}]=${comments[${lastln}]}' '
+						comments[${lastln}]=${comments[${lastln}]}${line}
+					else
+						local lastln=$(( ${#comments[@]} - 1))
+						[[ $lastln -lt 0 ]] && lastln=0
+						[[ ${#comments[${lastln}]} -gt 0 ]] && comments[${lastln}]=${comments[${lastln}]}' '
+						comments[${lastln}]=${comments[${lastln}]}${line}
+					fi;
+				elif [[ "${line:0:8}" = "function" ]] ; then
+					local fname=${line:9}
+					local fname=${fname%%' '*}
+					if [[ "$mode" != "list" ]] && [[ "$mode" != "all" ]] ; then
+						local tname=$(caseLower "$fname");							
+						[[ "${tname/${search}/}" = "$tname" ]] && {
+							comments=()
+							continue
+						}
+					fi;
+					[[ "${shown}" = false ]] && [[ "${mode}" != "only" ]] && {
+						[[ "${flib%%'/'*}" = "${flib}" ]] && local tpath="${PWD}" || {
+							local tpath="${flib%'/'*}"
+							[[ ${tpath:0:1} != "/" ]] && local tpath="${PWD}/${tpath}"
+						}
+						[[ "$tpath" = "$BSSDTK_DIR" ]] && echo -n "Library \`" || echo -n "Script \`"
+						setColor Light_Red
+						echo -n "${flib##*'/'}"
+						setColor Reset
+						echo -n "' "
+						if [[ ${main} ]] ; then
+							echo 
+							echo
+							helpComments 2 Dark_Gray "${main[@]}"
+							echo
+							setColor Light_Gray
+							echo "Functions:"
+							setColor Default
+						else
+							echo "functions:"
+						fi;
+						[[ "$mode" != "list" ]] && echo
+					}
+					if [[ "$mode" != "list" ]] ; then
+						if [[ "$mode" != "only" ]] ; then
+							setColor Dark_Gray
+							echo -n "function "
+							setColor Light_Green
+							echo -n "${fname}"
+							setColor Dark_Gray
+							echo " ()"
+						fi;
+						helpComments 4 Default "${comments[@]}" 
+						echo
+					else
+						[[ ${shown} = false ]] && shown=$(( $COLUMNS * 2 )) || echo -n ', '  
+						if [[ $(( $shown + ${#fname} )) -gt $(( $COLUMNS - 4 )) ]] ; then
+							[[ ${shown} != $(( $COLUMNS * 2 )) ]] && echo 
+							echo -n '  '
+							shown=1
+						fi;
+						setColor Green
+						echo -n "${fname}"
+						setColor Default
+					fi;
+					shown=$(( $shown + ${#fname} + 2 ))
+				else
+					[[ ! ${main} ]] && {
+						if [[ ${mode} != "list" ]] || [[ ${plus} ]] ; then
+						 	main=("${comments[@]}")
+						fi;
+					}
+					local comments=()
+					[[ $mode = "main" ]] && [[ ${main} ]] && {
+						helpComments 0 Default "${main[@]}"
+						break
+					}
+				fi;
+				;;
+			(*)
+				echo -n '.'
+		esac;
+	done<"${flib}"
+	if [[ "$mode" = "list" ]] ; then
+		[[ $shown != false ]] && {
+			echo
+			echo
+		}
+	elif [[ "${mode}" = "search" ]] && [[ $shown = false ]] ; then
+		local tname=$(caseLower "$flib");							
+		[[ "${tname/${search}/}" != "$tname" ]] && {
+			echo -n "Library \`"
+			setColor Light_Red
+			echo -n "${flib##*'/'}"
+			setColor Reset
+			echo "': "
+			if [[ ${main} ]] ; then
+				echo
+				helpComments 2 Dark_Gray "${main[@]}"
+			fi;
+			echo
+		}
+	fi 
+}
+
+# Performs helpShow for each of the core bssdtk libraries.
+function helpShowAll
+{
+	local i
+	local HWD="$PWD"
+	cd "${BSSDTK_DIR}" 
+	for i in * ; do
+		# filter out any directory
+		[[ -d "$i" ]] && continue
+		# filter out any file with an extension
+		[[ "$i" != "${i%%.*}" ]] && continue
+		helpShow "$i" "$@"
+	done
+	cd "$HWD"
+}
+
+function helpShowLibraries
+{
+	local i
+	local HWD="$PWD"
+	cd "${BSSDTK_DIR}"
+	local width=$COLUMNS
+	local flag
+	echo "The following libraries are available:"
+	for i in * ; do
+		# filter out any directory
+		[[ -d "$i" ]] && continue
+		# filter out any file with an extension
+		[[ "$i" != "${i%%.*}" ]] && continue
+		[[ ${flag} ]] && { echo -n ', '; width=$(( $width + 2 )); }
+		if [[ $(( $width + ${#i} + 3 )) -gt $COLUMNS ]] ; then
+			echo
+			local width=2
+			echo -n "  "
+		fi
+		setColor Green
+		echo -n "$i"
+		setColor Default
+		width=$(( $width + ${#i} ))
+		flag=true
+	done
+	echo
+	echo
+	cd "$HWD"
+}

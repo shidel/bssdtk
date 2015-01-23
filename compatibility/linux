@@ -1,0 +1,52 @@
+#!/bin/sh
+
+# Generic Linux Bash Compatibility Library.
+# Supporting CentOS, openSUSE 11.1+
+
+# Note: DigitalOcean Console does not support color library. No errors or ANSI escape
+# sequences are displayed. Color just doesn't work.
+
+# Override abstract core function and populate OS_TITLE & OS_VERSION global variables, 
+# linux version.
+function setDistribution
+{
+	OS_TITLE="unknown"
+	OS_VERSION="unknown"
+	registerExternals uname cat grep cut
+	# Linux Detection Routines
+	local rel=("os" "SuSE" "SUSE" "redhat" "fedora" "slackware" "debian" "release" "mandrake" "yellowdog" "sun" "gentoo" "UnitedLinux" "lsb")
+	local perm=("" "-release" "_release" "-version" "_version")
+	local i p
+	for i in ${rel[@]} ; do
+		local relfile=""
+		for p in ${perm[@]} ; do
+			if [[ -f "/etc/${i}${p}" ]] ; then
+				local relfile="${i}${p}"
+				break;
+			fi;
+		done;
+		[[ "${relfile}" != "" ]] && break
+	done;
+	if [[ "${relfile}" = "os-release" ]] ; then
+		# echo $( ${X_cat} "/etc/${relfile}" | ${X_grep} -m 1 "NAME") >&2
+		OS_TITLE=$( cat "/etc/${relfile}" | grep -m 1 "NAME" | cut -d '"' -f 2)
+		[[ "${OS_TITLE}=" = "" ]] && OS_TITLE=$( cat "/etc/${relfile}" | grep -m 1 "NAME" | cut -d '=' -f 2- )
+		OS_VERSION=$( cat "/etc/${relfile}" | grep -m 1 "VERSION_ID"  | cut -d '=' -f 2- )
+		[[ "${OS_VERSION}" = "" ]] && OS_VERSION=$( cat "/etc/${relfile}" | grep -m 1 "VERSION_ID" | cut -d '=' -f 2- )
+	else
+		local version=$( cat "/etc/${relfile}" | grep -m 1 "=" | grep -m 1 "VERSION" | cut -d '=' -f 2- )
+		local temp=$( cat "/etc/${relfile}" | grep -m 1 "" )
+		OS_TITLE=$(echo "${temp}" | cut -d ' ' -f 1 )
+		if [[ "${version}" = '' ]] ; then
+			for i in ${temp} ; do
+				if [[ "${i%'.'*}" != "${i}" ]] ; then
+					local version=$i
+					break
+				fi;
+			done;
+		fi;
+		OS_VERSION=$version
+	fi;
+	OS_TITLE=$(echo $OS_TITLE)
+	OS_VERSION=$(echo $OS_VERSION)
+}

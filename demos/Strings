@@ -1,0 +1,65 @@
+#!/bin/sh
+
+# Simple script to Ignore Control+C keyboard input.
+
+# Include Bash Shell Script Development Toolkit Core Library
+. /opt/bssdtk/core
+
+requireOnce strings
+
+MyStr="Hello there my good friend Rhonda McDonald!"
+OtherStr="****Help me Rhonda****"
+NumStr="0 15 0097 0.0 00.010 3.14 19.5"
+
+echo "Using string:"
+echo "$MyStr"
+echo
+
+echo "Displaying as uppercase:"
+caseUpper "$MyStr"
+echo
+
+echo "Displaying as lowercase:"
+caseLower "$MyStr"
+echo
+
+echo "Capitalizing each word:"
+caseCaps "$MyStr"
+echo
+
+echo "Capitalizing only the first letter of each word:"
+caseLower "$MyStr" | caseCaps
+echo
+
+echo "Output as multiple lines: "
+echo $MyStr | pipeMultiLine
+echo 
+
+echo "Output as single line: "
+echo $MyStr | pipeMultiLine | pipeOneLine
+echo 
+
+echo "Left trim '*': "
+trimLeft '*' "$OtherStr"
+echo
+
+echo "Right trim '*': "
+trimRight '*' "$OtherStr"
+echo
+
+echo "Left Pad with char '^':"
+echo "$OtherStr" | padLeftStr 30 '^'
+echo
+
+echo "Right Pad with char '^':"
+padRightStr 30 '^' "$OtherStr"
+echo
+
+# Excluded lpad & rpad same as lpadchar & rpadchar when char is a space
+echo "Zero pad numbers: "
+pipeMultiLine $NumStr | padZero 5.2 
+echo
+
+echo "Remove zero pad from numbers: "
+pipeMultiLine $NumStr | padZero 1.0
+echo

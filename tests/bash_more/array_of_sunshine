@@ -1,0 +1,68 @@
+#!/bin/sh
+# Array Testing Sub-script
+
+A="Oops"
+A=()
+
+shtest "${A}" 	"" 		"clear array as null"
+shcheck
+
+A[0]=One
+A[1]=Two
+A[3]=Three
+
+shtest "${A[0]}" 	"One" 		"set array field 0"
+shcheck
+shtest "${A[1]}" 	"Two" 		"set array field 1"
+shcheck
+shtest "${A[3]}" 	"Three" 	"set array field 3"
+shcheck
+
+B="${A[@]}"
+shtest "$B" 	"One Two Three" 	"set return all array fields"
+shcheck
+
+B="${A[*]}"
+shtest "$B" 	"One Two Three" 	"set return all array fields"
+shcheck
+
+A[2]="Four"
+B="${A[@]}"
+shtest "$B" 	"One Two Four Three" 	"set insert field 2"
+shcheck
+
+unset A[1]
+B="${A[@]}"
+shtest "$B" 	"One Four Three" 	"unset field 1"
+shcheck
+
+shtest "${#A[*]}" 	"3" 	"count items in array"
+shcheck
+
+A[3]="Three Plus"
+shtest "${#A[*]}" 	"3" 	"count entire items in array"
+shcheck
+
+# Unfortunately, multi-dimensional arrays aren't supported, and can't really even 
+# do easy work-around on Mac.
+unset A
+B=(Hello there)
+A[0]="${B[*]}"
+C=(my friend)
+D=(is here)
+B[0]="${C[*]}"
+B[1]="${D[@]}"
+A[1]="${B[*]}"
+unset B
+unset C
+unset D
+
+B="${A[*]}"
+shtest  "$B"	"Hello there my friend is here" 	"unset field 1"
+shcheck
+
+B="${A[1]}"
+shtest  "$B"	"my friend is here" 	"unset field 1"
+shcheck
+
+# Skipping Name based indexes, do to limited compatiblity
